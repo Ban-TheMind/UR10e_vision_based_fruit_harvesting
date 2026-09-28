@@ -5,10 +5,9 @@ import asyncio
 from cv_bridge import CvBridge
 import rclpy
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import Point, Pose, TransformStamped
+from geometry_msgs.msg import Point
 from ament_index_python.packages import get_package_share_directory
 import os
-import tf2_ros
 
 class DetectionHandler:
     def __init__(self, node, tf_handler, visualiser):
@@ -44,7 +43,7 @@ class DetectionHandler:
 
         saved_frame = self.current_frame
 
-        if (request.command == 'detect_flip'):
+        if saved_frame is not None and request.command == 'detect_flip':
             saved_frame = cv2.flip(saved_frame, 0)
 
         """Async handler for detect command"""
@@ -67,57 +66,47 @@ class DetectionHandler:
                 if cls_id == request.identifier and conf > request.conf:
                     x_center = int((box[0] + box[2]) / 2)
                     y_center = int((box[1] + box[3]) / 2)
-                    avg_depth = self.get_average_depth(int(x_center), int(y_center))
+                    # Detection may use a vertically flipped color image, while
+                    # aligned depth and camera intrinsics remain unflipped.
+                    camera_y = (saved_frame.shape[0] - 1 - y_center
+                                if request.command == 'detect_flip' else y_center)
+                    avg_depth = self.get_average_depth(x_center, camera_y)
 
                     # if invalid 
                     if np.isnan(avg_depth):
                         print(f"INVALID DEPTH!!!! SKIPPING!!!!")
                         continue
                     
-                    point_3d = self.tf_handler.pixel_to_3d(x_center, y_center, avg_depth)
+                    point_3d = self.tf_handler.pixel_to_3d(x_center, camera_y, avg_depth)
 
-                    if not point_3d:
+                    if point_3d is None:
                         continue
-
-                    # Prepare for visualization (camera frame coordinates)
-                    vis_data = {
-                        'box': box,
-                        'center': (x_center, y_center),
-                        'point_3d': point_3d,  # Camera frame coordinates
-                        'confidence': conf
-                    }
 
                     point_msg = Point()
                     point_msg.x = point_3d[0]
                     point_msg.y = point_3d[1]
                     point_msg.z = point_3d[2]
-                    
-                    try:
-                        # Transform the point to base frame
-                        base_pose = self.tf_handler.transform_to_base(point_msg)
-                        
-                        # Create new point with transformed coordinates
-                        transformed_point = Point()
 
-                        # the minus sign converts to actual coordinates wrt. base_link
-                        transformed_point.x = -base_pose.x
-                        transformed_point.y = -base_pose.y
-                        transformed_point.z = base_pose.z
-                        
-                        detections.append(transformed_point)
-                        self.last_detections.append(vis_data)
-                        
-                        # Print the transformed coordinates
-                        self.node.get_logger().info(
-                            f"Transformed coordinates (base frame): "
-                            f"X: {transformed_point.x:.3f}, "
-                            f"Y: {transformed_point.y:.3f}, "
-                            f"Z: {transformed_point.z:.3f}")
-                            
-                    except (tf2_ros.LookupException, 
-                            tf2_ros.ConnectivityException, 
-                            tf2_ros.ExtrapolationException) as e:
-                        self.node.get_logger().error(f"TF transform failed: {str(e)}")
+                    base_point = self.tf_handler.transform_to_base(point_msg)
+                    # UR controller `base` is rotated by 180 degrees about Z
+                    # relative to MoveIt's `base_link` planning frame.
+                    planning_point = Point()
+                    planning_point.x = -base_point.x
+                    planning_point.y = -base_point.y
+                    planning_point.z = base_point.z
+                    detections.append(planning_point)
+                    self.last_detections.append({
+                        'box': box,
+                        'center': (x_center, y_center),
+                        'base_point': base_point,
+                        'confidence': conf,
+                    })
+
+                    self.node.get_logger().info(
+                        f"Transformed coordinates (UR base frame): "
+                        f"X: {base_point.x:.3f}, "
+                        f"Y: {base_point.y:.3f}, "
+                        f"Z: {base_point.z:.3f}")
             
             self.visualiser.update_cv_visualization(saved_frame, self.last_detections)
 

@@ -1,9 +1,11 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cmath>
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit_msgs/msg/constraints.hpp"
@@ -13,6 +15,7 @@
 #include "custom_interface/srv/movement_request.hpp"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/LinearMath/Matrix3x3.h> 
+#include "movement_request_policy.hpp"
 
 class MoveitPathPlanningServer {
 public:
@@ -43,7 +46,15 @@ public:
     node_->declare_parameter("goal_position_tolerance", 0.001);  
     node_->declare_parameter("goal_orientation_tolerance", 0.001);  
 
-    setupCollisionObjects();
+    // The example scene contains dimensions from the original author's workcell.
+    // It must be explicitly enabled only after the actual cell is measured.
+    node_->declare_parameter("load_example_collision_objects", false);
+    if (node_->get_parameter("load_example_collision_objects").as_bool()) {
+      setupCollisionObjects();
+    }
+
+    // A service request must not move real hardware during commissioning by default.
+    node_->declare_parameter("allow_execution", false);
 
     // Apply parameters
     move_group_->setPlanningTime(node_->get_parameter("planning_time").as_double());
@@ -170,8 +181,22 @@ public:
 {
     RCLCPP_INFO(node_->get_logger(), "Received MoveIt path planning request. Command: %s", request->command.c_str());
 
-    if (request->positions.size() != 6) {
-        RCLCPP_ERROR(node_->get_logger(), "Expected 6 position elements, got %zu", request->positions.size());
+    const auto command = movement_request_policy::parse_command(request->command);
+    if (command == movement_request_policy::Command::Invalid) {
+        RCLCPP_ERROR(node_->get_logger(), "Unsupported command: %s", request->command.c_str());
+        response->success = false;
+        return;
+    }
+
+    if (!movement_request_policy::valid_positions(request->positions)) {
+        RCLCPP_ERROR(node_->get_logger(), "Expected 6 finite position elements, got %zu", request->positions.size());
+        response->success = false;
+        return;
+    }
+
+    const bool execute_request = movement_request_policy::is_execution(command);
+    if (execute_request && !node_->get_parameter("allow_execution").as_bool()) {
+        RCLCPP_ERROR(node_->get_logger(), "Execution disabled; use plan_cartesian or plan_joint for a dry run");
         response->success = false;
         return;
     }
@@ -182,16 +207,10 @@ public:
 
     // Handle different command types
     bool target_set = false;
-    if (request->command == "cartesian") {
+    if (movement_request_policy::is_cartesian(command)) {
         target_set = set_cartesian_target(request->positions);
-    } 
-    else if (request->command == "joint") {
+    } else {
         target_set = set_joint_target(request->positions);
-    }
-    else {
-        RCLCPP_ERROR(node_->get_logger(), "Invalid command: %s", request->command.c_str());
-        response->success = false;
-        return;
     }
 
     if (!target_set) {
@@ -206,7 +225,7 @@ public:
     }
 
     // Common planning and execution logic
-    response->success = plan_and_execute();
+    response->success = plan_and_maybe_execute(execute_request);
 }
 
   void setupCollisionObjects() {
@@ -249,9 +268,11 @@ public:
 private:
   bool set_cartesian_target(const std::vector<double>& positions) {
     try {
-        geometry_msgs::msg::Pose target_pose = create_pose_from_positions(positions);
-        move_group_->setPoseTarget(target_pose);
-        return true;
+        geometry_msgs::msg::PoseStamped target_pose;
+        target_pose.header.frame_id = "base_link";
+        target_pose.header.stamp = node_->now();
+        target_pose.pose = create_pose_from_positions(positions);
+        return move_group_->setPoseTarget(target_pose);
     } catch (const std::exception& e) {
         RCLCPP_ERROR(node_->get_logger(), "Failed to set Cartesian target: %s", e.what());
         return false;
@@ -261,8 +282,7 @@ private:
   bool set_joint_target(const std::vector<double>& positions) {
     try {
         auto joint_targets = create_joint_map_from_positions(positions);
-        move_group_->setJointValueTarget(joint_targets);
-        return true;
+        return move_group_->setJointValueTarget(joint_targets);
     } catch (const std::exception& e) {
         RCLCPP_ERROR(node_->get_logger(), "Failed to set joint target: %s", e.what());
         return false;
@@ -284,39 +304,27 @@ private:
   }
 
   std::map<std::string, double> create_joint_map_from_positions(const std::vector<double>& positions) {
-    return {
-        {"shoulder_pan_joint", positions[5]},
-        {"shoulder_lift_joint", positions[0]},
-        {"elbow_joint", positions[1]},
-        {"wrist_1_joint", positions[2]},
-        {"wrist_2_joint", positions[3]},
-        {"wrist_3_joint", positions[4]}
-    };
+    return movement_request_policy::joint_targets(positions);
   }
 
-  bool plan_and_execute() {
+  bool plan_and_maybe_execute(bool execute_request) {
     moveit::planning_interface::MoveGroupInterface::Plan plan;
-    bool success = false;
-    int attempts = 0;
-    const int max_attempts = 1000;
-    
-    while (!success && attempts < max_attempts) {
-        success = (move_group_->plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
-        attempts++;
-        if (!success) {
-            RCLCPP_WARN(node_->get_logger(), "Planning attempt %d failed, retrying...", attempts);
-            move_group_->setPlanningTime(move_group_->getPlanningTime() + 2.0);
-        }
-    }
-    
-    if (success) {
-        RCLCPP_INFO(node_->get_logger(), "Plan successful after %d attempts. Executing...", attempts);
-        move_group_->execute(plan);
-        return true;
-    } else {
-        RCLCPP_ERROR(node_->get_logger(), "Planning failed after %d attempts.", max_attempts);
+    if (move_group_->plan(plan) != moveit::core::MoveItErrorCode::SUCCESS) {
+        RCLCPP_ERROR(node_->get_logger(), "Planning failed; no trajectory was executed");
         return false;
     }
+
+    if (!execute_request) {
+        RCLCPP_INFO(node_->get_logger(), "Plan succeeded; execution was not requested");
+        return true;
+    }
+
+    const auto execution_result = move_group_->execute(plan);
+    if (execution_result != moveit::core::MoveItErrorCode::SUCCESS) {
+        RCLCPP_ERROR(node_->get_logger(), "Trajectory execution failed");
+        return false;
+    }
+    return true;
   }
 
 

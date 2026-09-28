@@ -29,7 +29,7 @@ class VisualisationHandler:
         for det in detections:
             box = det['box']
             center = det['center']
-            point_3d = det['point_3d']
+            base_point = det['base_point']
             conf = det['confidence']
 
             # Draw bounding box
@@ -44,7 +44,7 @@ class VisualisationHandler:
                       5, (0, 255, 0), -1)
             
             # Draw coordinates text
-            coord_text = f"X:{point_3d[0]:.2f}, Y:{point_3d[1]:.2f}, Z:{point_3d[2]:.2f}"
+            coord_text = f"Base X:{base_point.x:.2f}, Y:{base_point.y:.2f}, Z:{base_point.z:.2f}"
             cv2.putText(display_frame, coord_text,
                        (int(box[0]), int(box[1]) - 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
@@ -69,13 +69,17 @@ class VisualisationHandler:
             marker_array = MarkerArray()
             
             for i, detection in enumerate(detections):
-                point_3d = detection['point_3d']
+                base_point = detection['base_point']
 
-                self.tf_handler.publish_transform(frame_id="camera_link", child_frame_id=f"detected_object_{i}", point=point_3d)
+                self.tf_handler.publish_transform(
+                    frame_id="base",
+                    child_frame_id=f"detected_object_{i}",
+                    point=(base_point.x, base_point.y, base_point.z),
+                )
 
                 # Create RViz marker
                 marker = Marker()
-                marker.header.frame_id = "camera_link"
+                marker.header.frame_id = "base"
                 marker.header.stamp = self.node.get_clock().now().to_msg()
                 marker.ns = "detections"
                 marker.id = i
@@ -83,9 +87,9 @@ class VisualisationHandler:
                 marker.action = Marker.ADD
                 
                 # Set marker position
-                marker.pose.position.x = point_3d[0]
-                marker.pose.position.y = point_3d[1]
-                marker.pose.position.z = point_3d[2]
+                marker.pose.position.x = base_point.x
+                marker.pose.position.y = base_point.y
+                marker.pose.position.z = base_point.z
                 
                 # Set marker scale (size)
                 marker.scale.x = 0.05  # 5cm diameter

@@ -44,13 +44,7 @@
 
   </joint>
 
-  <link name="camera_link"> </link>
-
-  <joint name="camera_joint" type="fixed">
-      <parent link="flange"/>
-      <child link="camera_link"/>
-      <!-- <origin xyz="0.0345 0 -0.1032" rpy="${pi} ${pi} ${pi}"/> -->
-      <origin xyz="0.0199931 -0.0028582 -0.109958" rpy="3.12825 -3.12574 -3.13495" />
-  </joint>
+  <!-- The calibrated camera is fixed outside the arm (eye-to-hand),
+       so it must not be attached to the moving flange. -->
 
 </robot>

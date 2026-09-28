@@ -51,6 +51,63 @@
   * uses TRRT planner by default
     * the planner can be changed via `ompl_planning.yaml` file
 
+### Lab eye-to-hand configuration
+
+The launch file `src/end_effector_description/launch/display.launch.py` selects
+UR10e `192.168.11.60` and RealSense serial `406122071837` (passed to the
+RealSense ROS wrapper as `_406122071837` to preserve its string type).
+
+The camera is fixed outside the robot. `src/camera/camera/tf_utils.py` converts
+aligned color optical-frame points (meters) directly into the UR `base` frame:
+
+```text
+T_base_camera =
+[[-0.14168, -0.28354,  0.94844, -0.12025],
+ [-0.98968,  0.019898, -0.14189,  0.41004],
+ [ 0.021358, -0.95875, -0.28343,  0.39921],
+ [ 0,         0,        0,        1      ]]
+```
+
+The camera is no longer attached to the robot flange in the runtime URDF.
+RViz detection markers are in the UR controller's `base` frame. The camera
+service returns points in MoveIt's `base_link` frame (X and Y negated from
+`base`, because those frames differ by a 180-degree rotation about Z).
+`robot_calibration.yaml` is the UR arm's kinematic calibration, not this
+camera extrinsic calibration. Before executing a demo, verify that this matrix
+was measured for the current camera mount and optical frame, then check a known
+point in the `base` frame. The demo motion poses and offsets still come from the
+original setup and need separate validation on this robot.
+
+### Commissioning tests (no robot motion)
+
+The motion service accepts `plan_cartesian` and `plan_joint` for planning only.
+The existing `cartesian` and `joint` requests are execution requests and are
+rejected unless the motion node is explicitly started with
+`allow_execution:=true`. Cartesian positions are `[x, y, z, roll, pitch, yaw]`
+in meters/radians and are interpreted in `base_link`; joint positions are six
+radians in UR joint order (shoulder pan, shoulder lift, elbow, wrist 1, 2, 3).
+The gripper service similarly rejects hardware commands unless
+`allow_gripper_commands:=true`. The example collision boxes are disabled by
+default because their dimensions and locations describe another workcell.
+
+The following tests use only the local C++ and Python standard libraries; they
+do not start ROS, contact the robot, or contact the gripper:
+
+```bash
+g++ -std=c++17 -Wall -Wextra -Werror \
+  -I src/moveit_path_planner/src \
+  src/moveit_path_planner/test/test_movement_request_policy.cpp \
+  -o /tmp/test_movement_request_policy
+/tmp/test_movement_request_policy
+python3 -m unittest src/gripper/test/test_gripper_safety.py
+```
+
+This workstation currently has Ubuntu 20.04 with ROS 2 Foxy, while this
+repository targets ROS 2 Humble. Keep any Humble build environment separate
+from `/opt/ros/foxy`. Before enabling real execution, validate the actual robot
+kinematics, planning frame, collision scene, speed limits, work envelope, and
+every trajectory with the on-site operator.
+
 ## Demo videos
 
 ### Vision-based pick and place at varying heights on a horizontal surface

@@ -72,10 +72,12 @@ class DemoRoutine(Node):
         try:
             response = future.result()
             self.get_logger().info(f'Gripper Response: {response.success} - {response.message}')
+            if not response.success:
+                raise RuntimeError(f'Gripper command failed: {response.message}')
             return response
         except Exception as e:
             self.get_logger().error(f'Gripper Service call failed: {e}')
-            return None
+            raise
 
 
     def send_reset_gripper_request(self, reset):
@@ -90,13 +92,16 @@ class DemoRoutine(Node):
         try:
             response = future.result()
             self.get_logger().info(f'Reset Gripper Response: {response.success} - {response.message}')
+            if not response.success:
+                raise RuntimeError(f'Gripper reset failed: {response.message}')
             return response
         except Exception as e:
             self.get_logger().error(f'Reset Gripper Service call failed: {e}')
-            return None
+            raise
 
     def send_movement_request(self, positions, constraint = NO_CONSTRAINT):
         request = MovementRequest.Request()
+        request.command = 'cartesian'
         request.positions = positions
         request.constraints_identifier = constraint
 
@@ -108,10 +113,12 @@ class DemoRoutine(Node):
         try:
             response = future.result()
             self.get_logger().info(f'Movement Response: {response.success}')
+            if not response.success:
+                raise RuntimeError('Movement request failed; stopping demo')
             return response
         except Exception as e:
             self.get_logger().error(f'Movement Service call failed: {e}')
-            return None
+            raise
 
     def run_demo(self):
 

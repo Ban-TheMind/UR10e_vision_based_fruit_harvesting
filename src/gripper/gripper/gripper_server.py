@@ -8,11 +8,17 @@ import requests
 class GripperServer(Node):
     def __init__(self):
         super().__init__('gripper_server')
-        self.srv = self.create_service(GripperCmd, 'gripper_cmd', self.gripper_callback)
-        self.srv = self.create_service(ResetGripperCmd, 'reset_gripper_cmd', self.reset_gripper_callback)
+        self.declare_parameter('allow_gripper_commands', False)
+        self.gripper_service = self.create_service(GripperCmd, 'gripper_cmd', self.gripper_callback)
+        self.reset_service = self.create_service(ResetGripperCmd, 'reset_gripper_cmd', self.reset_gripper_callback)
         self.get_logger().info('Gripper Server ready to receive commands...')
         
     def gripper_callback(self, request, response):
+        if not self.get_parameter('allow_gripper_commands').value:
+            response.success = False
+            response.message = 'Gripper commands are disabled during testing'
+            return response
+
         # Validate width
         if not (0 <= request.width <= 100):
             response.success = False
@@ -28,7 +34,7 @@ class GripperServer(Node):
         try:
             # Send command to gripper
             url = f"http://192.168.1.1/api/dc/rgxp2/set_width/0/{request.width}/{request.force}"
-            res = requests.get(url)
+            res = requests.get(url, timeout=3)
             
             if res.status_code == 200:
                 response.success = True
@@ -45,6 +51,11 @@ class GripperServer(Node):
 
   
     def reset_gripper_callback(self, request, response):  
+        if not self.get_parameter('allow_gripper_commands').value:
+            response.success = False
+            response.message = 'Gripper commands are disabled during testing'
+            return response
+
         reset = request.reset_gripper
 
         if not reset:
@@ -55,7 +66,7 @@ class GripperServer(Node):
         try:
             # Send command to gripper
             url = f"http://192.168.1.1/api/dc/reset_tool_power"
-            res = requests.get(url)
+            res = requests.get(url, timeout=3)
             
             if res.status_code == 200:
                 response.success = True

@@ -9,7 +9,7 @@ from launch_ros.substitutions import FindPackageShare
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
-# Toggle between simulated or real UR5e hardware
+# Toggle between simulated or real UR10e hardware
 use_fake = False
 use_fake_str = 'true'
 ur_type = 'ur10e'
@@ -17,7 +17,7 @@ ip_address = 'yyy.yyy.yyy.yyy'
 
 if not use_fake:
     print("not fake")
-    ip_address = '192.168.0.100'
+    ip_address = '192.168.11.60'
     use_fake_str = 'false'
 
 
@@ -30,6 +30,8 @@ def get_realsense_launch():
     return IncludeLaunchDescription(
         PythonLaunchDescriptionSource(realsense_launch_path),
         launch_arguments={
+            # RealSense ROS requires '_' to keep a numeric serial as a string.
+            'serial_no': '_406122071837',
             'enable_rgbd': 'true',
             'enable_sync': 'true',
             'align_depth.enable': 'true',

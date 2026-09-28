@@ -1,19 +1,22 @@
-import rclpy
 import tf2_ros
-from geometry_msgs.msg import Point, Pose, TransformStamped
+from geometry_msgs.msg import Point, TransformStamped
 import tf_transformations
-from rclpy.time import Time
 import pyrealsense2 as rs
 from sensor_msgs.msg import CameraInfo
-from rclpy.callback_groups import ReentrantCallbackGroup
-import tf2_geometry_msgs
-from geometry_msgs.msg import Quaternion
+
+
+# Eye-to-hand calibration: aligned color optical camera frame -> UR base frame.
+# Translation is in meters; pixel deprojection below produces camera coordinates in meters.
+CAMERA_TO_BASE = (
+    (-0.14168, -0.28354,  0.94844, -0.12025),
+    (-0.98968,  0.019898, -0.14189,  0.41004),
+    ( 0.021358, -0.95875, -0.28343,  0.39921),
+    ( 0.0,       0.0,       0.0,      1.0),
+)
 
 class TFHandler:
     def __init__(self, node):
         self.node = node
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self.node)
         self.broadcaster = tf2_ros.TransformBroadcaster(self.node)
         self.intrinsics = None
         
@@ -38,26 +41,14 @@ class TFHandler:
             self.intrinsics.coeffs = list(msg.d)
             self.node.get_logger().info("Camera intrinsics received")
 
-    def transform_to_base(self, point, from_frame='camera_link'):
-        try:
-            if self.tf_buffer.can_transform('base', from_frame, rclpy.time.Time(), rclpy.duration.Duration(seconds=2.0)):
-                transform = self.tf_buffer.lookup_transform(
-                    'base', from_frame,
-                    rclpy.time.Time(),
-                    timeout=rclpy.duration.Duration(seconds=2.0))
-                
-                pose = Pose()
-                pose.position = point
-                pose.orientation = Quaternion()  # Add this line to prevent NoneType errors
-                
-                transformed = tf2_geometry_msgs.do_transform_pose(pose, transform)
-                return transformed.position
-            else:
-                self.node.get_logger().error('TF transform failed: could not find transform from %s to base' % from_frame)
-                return None
-        except Exception as e:
-            self.node.get_logger().error(f"TF error: {str(e)}")
-            return None
+    def transform_to_base(self, point):
+        """Convert an optical-frame camera point to the UR base frame."""
+        coordinates = (point.x, point.y, point.z)
+        result = Point()
+        result.x = sum(CAMERA_TO_BASE[0][i] * coordinates[i] for i in range(3)) + CAMERA_TO_BASE[0][3]
+        result.y = sum(CAMERA_TO_BASE[1][i] * coordinates[i] for i in range(3)) + CAMERA_TO_BASE[1][3]
+        result.z = sum(CAMERA_TO_BASE[2][i] * coordinates[i] for i in range(3)) + CAMERA_TO_BASE[2][3]
+        return result
             
     def publish_transform(self, frame_id, child_frame_id, point, orientation=None):
         t = TransformStamped()
@@ -79,20 +70,14 @@ class TFHandler:
             
         self.broadcaster.sendTransform(t)
         
-    def transform_camera_to_world(self, point):
-        """Proper coordinate transformation from camera to world frame"""
-        return [
-            point[2],   # Camera Z -> World X (forward)
-            -point[1] + 0.038 + 0.20,   # this is -(robot x)
-            -point[0] - 0.18,  # this is -(robot y)
-        ]
-    
     def pixel_to_3d(self, pixel_x, pixel_y, depth_value):
-        """Convert pixel+depth to 3D point in camera frame"""            
+        """Convert an aligned color pixel and depth in mm to the optical camera frame."""
+        if self.intrinsics is None:
+            return None
         # Convert to camera frame coordinates (X right, Y down, Z forward)
         point_3d = rs.rs2_deproject_pixel_to_point(
             self.intrinsics,
-            [pixel_y, pixel_x],
+            [pixel_x, pixel_y],
             depth_value * 0.001  # mm to meters
         )
-        return self.transform_camera_to_world(point_3d)
+        return point_3d
