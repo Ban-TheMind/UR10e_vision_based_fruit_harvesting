@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.qos import qos_profile_sensor_data
 from custom_interface.srv import CameraSrv
 from .detection_utils import DetectionHandler
 from message_filters import ApproximateTimeSynchronizer, Subscriber
@@ -50,12 +51,14 @@ class CameraServer(Node):
             self, 
             Image, 
             '/camera/camera/color/image_raw',
+            qos_profile=qos_profile_sensor_data,
             callback_group=self.image_group
         )
         self.depth_sub = Subscriber(
             self, 
             Image, 
             '/camera/camera/aligned_depth_to_color/image_raw',
+            qos_profile=qos_profile_sensor_data,
             callback_group=self.image_group
         )
                 

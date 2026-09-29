@@ -1,0 +1,18 @@
+{
+  "camera_info": {
+    "width": 640,
+    "height": 480,
+    "k": [null, 0, null, 0, null, null, 0, 0, 1],
+    "d": [0, 0, 0, 0, 0],
+    "distortion_model": "plumb_bob"
+  },
+  "max_error_m": 0.03,
+  "observations": [
+    {
+      "name": "fixed_target_1",
+      "pixel": [null, null],
+      "depth_m": null,
+      "measured_base_m": [null, null, null]
+    }
+  ]
+}

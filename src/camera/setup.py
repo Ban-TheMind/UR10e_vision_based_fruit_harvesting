@@ -26,7 +26,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'camera_server = camera.camera_server:main',
+            'camera_server = camera.camera_node:main',
             'camera_client = camera.camera_client:main',
             'camera_node = camera.camera_node:main',
         ],

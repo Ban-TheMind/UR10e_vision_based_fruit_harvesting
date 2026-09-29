@@ -1,5 +1,7 @@
 import cv2
 from .inference_client import InferenceClient
+from .depth_utils import median_depth_m
+from .geometry import controller_base_to_base_link, unflip_vertical_pixel
 import numpy as np
 import asyncio
 from cv_bridge import CvBridge
@@ -78,7 +80,7 @@ class DetectionHandler:
                     y_center = int((box[1] + box[3]) / 2)
                     # Detection may use a vertically flipped color image, while
                     # aligned depth and camera intrinsics remain unflipped.
-                    camera_y = (saved_frame.shape[0] - 1 - y_center
+                    camera_y = (unflip_vertical_pixel(y_center, saved_frame.shape[0])
                                 if request.command == 'detect_flip' else y_center)
                     avg_depth = self.get_average_depth(
                         x_center, camera_y, depth_frame, depth_encoding)
@@ -102,9 +104,9 @@ class DetectionHandler:
                     # UR controller `base` is rotated by 180 degrees about Z
                     # relative to MoveIt's `base_link` planning frame.
                     planning_point = Point()
-                    planning_point.x = -base_point.x
-                    planning_point.y = -base_point.y
-                    planning_point.z = base_point.z
+                    planning_point.x, planning_point.y, planning_point.z = (
+                        controller_base_to_base_link(
+                            base_point.x, base_point.y, base_point.z))
                     detections.append(planning_point)
                     self.last_detections.append({
                         'box': box,
@@ -149,34 +151,13 @@ class DetectionHandler:
 
     def get_average_depth(self, x_center, y_center, depth_frame, depth_encoding,
                           sampling_radius=5):
-        """
-        Compute average depth in a small fixed window around center.
-        
-        Args:
-            x_center, y_center (int): Center coordinates
-            sampling_radius (int): How many pixels to sample around center (default=2 → 5×5 window)
-        
-        Returns:
-            float: Robust average depth
-        """
-        # Extract fixed-size patch
-        depth_patch = depth_frame[
-            max(0, y_center - sampling_radius):min(depth_frame.shape[0], y_center + sampling_radius + 1),
-            max(0, x_center - sampling_radius):min(depth_frame.shape[1], x_center + sampling_radius + 1)
-        ]
-        
-        # Process valid depths
-        valid_depths = depth_patch[(depth_patch > 0) & ~np.isnan(depth_patch)]
-        if len(valid_depths) < 3:
+        """Return median aligned depth in meters from a local pixel window."""
+        try:
+            return median_depth_m(depth_frame, depth_encoding, x_center, y_center,
+                                  sampling_radius)
+        except ValueError as exc:
+            self.node.get_logger().error(str(exc))
             return float('nan')
-        
-        depth = float(np.median(valid_depths))
-        if depth_encoding == '16UC1':
-            return depth * 0.001
-        if depth_encoding == '32FC1':
-            return depth
-        self.node.get_logger().error(f"Unsupported depth encoding: {depth_encoding}")
-        return float('nan')
 
     def close(self):
         self.inference.close()

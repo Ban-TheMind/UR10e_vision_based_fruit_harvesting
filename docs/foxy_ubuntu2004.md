@@ -2,6 +2,8 @@
 
 此分支使用现场已有的 `/opt/ros/foxy`，不安装另一套 Ubuntu，也不修改 `VPP` 环境。仓库中的 `ur10e_moveit_config*` 是旧的 Humble 配置，已从本分支的 colcon 构建中排除。Foxy 的 UR 驱动和 MoveIt 配置由 Foxy 软件包提供；本项目的两个 `foxy_*.launch.py` 使用相同的末端工具模型和 `robot_calibration.yaml`。
 
+启动文件和控制器参数以 [Universal Robots 官方 Foxy 分支](https://github.com/UniversalRobots/Universal_Robots_ROS2_Driver/tree/foxy) 为参照；本地核对时该分支提交为 `18487f58ec17`。项目内置 `config/ur_controllers.yaml`，因此控制启动不再要求单独安装 `ur_bringup`。现场软件包版本和相机包装器的实际参数仍由 `tools/foxy_site_preflight.sh` 检查。
+
 ## 依赖
 
 现场已有 Foxy 核心，但缺少 UR 驱动、MoveIt、RealSense ROS 包。安装前再次用 `apt-get -s` 确认不会升级或卸载现有软件包。下面的命令只补充 Foxy 模块，不需要 `ros-foxy-ur-bringup` 或 MongoDB：
@@ -22,6 +24,29 @@ sudo apt-get install --no-install-recommends \
 `src/camera/models/best.pt` 由 Git LFS 管理。普通 Git 检出可能只得到文本占位文件；运行 `tools/test_inference_worker.py` 前必须取回真实权重。本分支会在启动相机节点时明确检查这一点。
 
 ## 编译和无运动检查
+
+在宿舍电脑（Windows 或 Linux）可以先运行：
+
+```bash
+python tools/offline_preflight.py
+```
+
+此入口检查 Python/ROS 包配置语法、现场 IP/序列号配置、Foxy 包布局、相机像素到空间坐标、深度单位、YOLO 子进程通信协议、夹爪默认禁止网络命令，以及 C++ 运动请求策略（若有 `g++`）。它只处理仓库内的数据，不连接 ROS 图、相机或机械臂。模型文件若仍是 Git LFS 占位符会给出提示；可加 `--require-model` 把该情况作为失败。
+
+回到 Ubuntu 20.04 主机后，先保留并核对现场目录中的未提交改动，再同步本分支。然后运行：
+
+```bash
+bash tools/foxy_site_preflight.sh
+bash tools/foxy_site_preflight.sh --build
+```
+
+第一条读取 Foxy 包清单、运行离线检查，并在已有构建目录时展开 UR10e Xacro；第二条额外在本项目目录构建后展开 Xacro，核对机械臂、工具和 ros2_control。两条命令均不启动驱动、不发送运动命令，也不安装系统包。脚本会优先使用项目已有的隔离 Python 环境；如位置不同，可通过 `UR10E_FOXY_VENV` 指定。
+
+完整编译通过后，才继续做相机话题、关节状态和静止目标的现场核查。静止目标验证需要独立测量的目标点，离线几何测试只能验证计算逻辑，无法证明手眼标定仍符合当前安装位置。
+
+静止目标核验时，复制 `tools/static_target_template.json`，填入现场 `/camera/camera/aligned_depth_to_color/camera_info` 的内参、目标像素和深度（米），以及**独立测量的 UR 控制器 `base` 坐标**。不要把程序预测坐标再填回测量值。运行 `python tools/check_static_target.py 记录文件.json`；它输出各点误差，并在任一点超过 `max_error_m` 时返回失败。模板的 3 cm 仅是示例阈值，应按现场测量误差和任务精度确定。
+
+### 手工复核命令
 
 ```bash
 cd /home/ubuntu/Desktop/robot_learning/UR10e_vision_based_fruit_harvesting
