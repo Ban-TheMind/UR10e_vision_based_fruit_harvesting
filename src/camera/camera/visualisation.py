@@ -1,7 +1,6 @@
 import cv2
 import threading
 import tf2_ros
-import tf_transformations
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, Pose, TransformStamped
 
@@ -14,11 +13,15 @@ class VisualisationHandler:
         self.marker_pub = node.create_publisher(MarkerArray, 'detected_objects', 10)
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(node)
         
-        # OpenCV setup
-        cv2.namedWindow("Object Detection", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Object Detection", 1280, 720)
+        node.declare_parameter('enable_cv_window', False)
+        self.enable_cv_window = node.get_parameter('enable_cv_window').value
+        if self.enable_cv_window:
+            cv2.namedWindow("Object Detection", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Object Detection", 1280, 720)
                 
     def update_cv_visualization(self, display_frame, detections):
+        if not self.enable_cv_window:
+            return
         """Update the visualization window with frame and detections passed in"""
         if display_frame is None:
             self.node.get_logger().info("No frame available for visualization", 
@@ -113,4 +116,5 @@ class VisualisationHandler:
             self.node.get_logger().error(f"RViz Visualization error: {str(e)}")
         
     def cleanup(self):
-        cv2.destroyAllWindows()
+        if self.enable_cv_window:
+            cv2.destroyAllWindows()

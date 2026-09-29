@@ -102,11 +102,11 @@ g++ -std=c++17 -Wall -Wextra -Werror \
 python3 -m unittest src/gripper/test/test_gripper_safety.py
 ```
 
-This workstation currently has Ubuntu 20.04 with ROS 2 Foxy, while this
-repository targets ROS 2 Humble. Keep any Humble build environment separate
-from `/opt/ros/foxy`. Before enabling real execution, validate the actual robot
-kinematics, planning frame, collision scene, speed limits, work envelope, and
-every trajectory with the on-site operator.
+The Ubuntu 20.04 / ROS 2 Foxy port is documented in
+[`docs/foxy_ubuntu2004.md`](docs/foxy_ubuntu2004.md). The old Humble MoveIt
+config packages are excluded from this branch's build. Before enabling real
+execution, validate the robot kinematics, planning frame, collision scene,
+speed limits, work envelope, and every trajectory with the on-site operator.
 
 ## Demo videos
 

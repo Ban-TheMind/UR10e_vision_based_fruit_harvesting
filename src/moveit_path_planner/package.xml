@@ -15,7 +15,11 @@
   <depend>moveit_ros_planning_interface</depend>
   <depend>geometry_msgs</depend>
   <depend>tf2_geometry_msgs</depend>
-  <depend>tm_msgs</depend>
+  <depend>moveit_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>shape_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

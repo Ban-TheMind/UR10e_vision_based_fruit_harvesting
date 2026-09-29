@@ -1,4 +1,3 @@
-import threading
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
@@ -7,7 +6,6 @@ from custom_interface.srv import CameraSrv
 from .detection_utils import DetectionHandler
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from sensor_msgs.msg import Image
-import pyrealsense2 as rs
 from .tf_utils import TFHandler
 from .visualisation import VisualisationHandler
 
@@ -83,21 +81,16 @@ def main():
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(server)
 
-    # Start the executor in a background thread
-    def spin_executor():
-        executor.spin()
-    executor_thread = threading.Thread(target=spin_executor, daemon=True)
-    executor_thread.start()
-
     try:
-        while rclpy.ok():
-            rclpy.spin_once(server, timeout_sec=0.1)
+        executor.spin()
     except KeyboardInterrupt:
         server.get_logger().info("Shutting down server")
     finally:
+        executor.shutdown()
+        server.detector.close()
+        server.visualiser.cleanup()
         server.destroy_node()
         rclpy.shutdown()
-        executor_thread.join()
 
 
 if __name__ == '__main__':
