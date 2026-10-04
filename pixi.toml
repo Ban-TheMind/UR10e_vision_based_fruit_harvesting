@@ -1,0 +1,32 @@
+[workspace]
+name = "ur10e-vision-based-fruit-harvesting"
+version = "0.1.0"
+description = "Isolated ROS 2 Humble development environment"
+platforms = [{ platform = "linux-64", glibc = "2.39" }]
+channels = ["https://prefix.dev/conda-forge", "https://prefix.dev/robostack-humble"]
+
+[dependencies]
+python = "3.12.*"
+ros-humble-desktop = "*"
+ros-humble-moveit = "*"
+ros-humble-ur = "*"
+ros-humble-realsense2-camera = "*"
+ros-humble-cv-bridge = "*"
+ros-humble-tf-transformations = "*"
+ros-humble-message-filters = "*"
+ros-dev-tools = "*"
+pyrealsense2 = "*"
+ultralytics = "*"
+torchvision = "*"
+requests = "*"
+compilers = "*"
+cmake = "*"
+pkg-config = "*"
+make = "*"
+
+[activation]
+scripts = ["scripts/activate_workspace.sh"]
+
+[tasks]
+build = "colcon build --cmake-args -DPython3_FIND_VIRTUALENV=ONLY -DPython_FIND_VIRTUALENV=ONLY"
+packages = "ros2 pkg list"

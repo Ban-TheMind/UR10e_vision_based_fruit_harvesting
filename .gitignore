@@ -39,3 +39,7 @@ MOMA_project/src/demo_package/demo_package/__pycache__
 /src/demo_package/demo_package/__pycache__
 *.ikcache
 /.vscode
+/.pixi/
+/.pixi-home/
+/.cache/
+/.tools/

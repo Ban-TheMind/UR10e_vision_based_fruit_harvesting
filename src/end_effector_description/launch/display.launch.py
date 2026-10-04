@@ -9,15 +9,14 @@ from launch_ros.substitutions import FindPackageShare
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
-# Toggle between simulated or real UR5e hardware
+# Toggle between simulated or real UR10e hardware
 use_fake = False
 use_fake_str = 'true'
 ur_type = 'ur10e'
-ip_address = 'yyy.yyy.yyy.yyy'
+ip_address = LaunchConfiguration('robot_ip')
+camera_serial = LaunchConfiguration('camera_serial')
 
 if not use_fake:
-    print("not fake")
-    ip_address = '192.168.0.100'
     use_fake_str = 'false'
 
 
@@ -30,6 +29,7 @@ def get_realsense_launch():
     return IncludeLaunchDescription(
         PythonLaunchDescriptionSource(realsense_launch_path),
         launch_arguments={
+            'serial_no': camera_serial,
             'enable_rgbd': 'true',
             'enable_sync': 'true',
             'align_depth.enable': 'true',
@@ -130,6 +130,9 @@ def get_auxiliary_launch():
 def generate_launch_description():
     """Main function to generate the complete launch description."""
     launch_description = [
+        DeclareLaunchArgument('robot_ip', default_value='192.168.11.60'),
+        # RealSense ROS expects an underscore before a numeric serial number.
+        DeclareLaunchArgument('camera_serial', default_value='_406122071837'),
         get_ur_control_launch(),
         get_moveit_launch(),
         # get_rviz_launch(),

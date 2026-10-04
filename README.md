@@ -35,6 +35,28 @@
 
 
 ### Workspace setup
+On Linux x86-64, install the isolated ROS 2 Humble environment with:
+
+```bash
+./scripts/pixi install
+./scripts/pixi run build
+./scripts/pixi run ros2 pkg list
+```
+
+`scripts/pixi` downloads Pixi into this workspace and keeps its package cache and
+environment here; root access is not required. Use `./scripts/pixi run <command>`
+for ROS commands. The original demos expect a connected UR10e, RG2 gripper and
+RealSense camera. The default `display.launch.py` connects to the physical robot;
+do not launch it until the robot network and safety setup are ready.
+
+The environment includes the ROS RealSense driver and Python `pyrealsense2`.
+Its binary dependencies require glibc 2.39, so this lockfile targets Ubuntu
+24.04 or another Linux system with glibc 2.39 or newer.
+
+Before connecting to the real robot, complete [the field verification checklist](docs/field_verification.md).
+The provided Eye-to-Hand calibration is stored in `config/camera_to_base.json` but
+is not active until its ROS source and target frames are confirmed.
+
 * Camera
 * custom_interface
   * contains ROS2 `.srv` and `.msg`

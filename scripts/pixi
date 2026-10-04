@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+pixi_bin="$project_dir/.tools/pixi"
+
+if [[ ! -x "$pixi_bin" ]]; then
+  mkdir -p "$project_dir/.tools"
+  archive="$(mktemp)"
+  trap 'rm -f "$archive"' EXIT
+  curl -fsSL --retry 3 \
+    'https://github.com/prefix-dev/pixi/releases/download/v0.81.0/pixi-x86_64-unknown-linux-musl.tar.gz' \
+    -o "$archive"
+  tar -xzf "$archive" -C "$project_dir/.tools" pixi
+fi
+
+export XDG_CACHE_HOME="$project_dir/.cache"
+export PIXI_HOME="$project_dir/.pixi-home"
+export YOLO_CONFIG_DIR="$project_dir/.cache/ultralytics"
+export ROS_HOME="$project_dir/.cache/ros"
+mkdir -p "$ROS_HOME" "$YOLO_CONFIG_DIR"
+cd "$project_dir"
+exec "$pixi_bin" "$@"
