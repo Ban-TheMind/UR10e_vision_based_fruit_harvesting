@@ -1,4 +1,5 @@
 import cv2
+import threading
 from ultralytics import YOLO
 import numpy as np
 import asyncio
@@ -17,10 +18,15 @@ class DetectionHandler:
         self.visualiser = visualiser
 
         self.bridge = CvBridge()
+        self.frame_lock = threading.Lock()
 
         camera_pkg_dir = get_package_share_directory('camera')
         # model_path = os.path.join(camera_pkg_dir, 'models', 'yolo11m.pt')
-        model_path = os.path.join(camera_pkg_dir, 'models', 'best.pt')
+        model_path = self.node.get_parameter('model_file').value
+        if not os.path.isabs(model_path):
+            model_path = os.path.join(camera_pkg_dir, 'models', model_path)
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(f'Model not found: {model_path}')
         # Load YOLO model from parameter
         self.model = YOLO(model_path)
         self.model.fuse()
@@ -42,13 +48,15 @@ class DetectionHandler:
     
     async def _detect_objects(self, request):
 
-        saved_frame = self.current_frame
+        with self.frame_lock:
+            saved_frame = None if self.current_frame is None else self.current_frame.copy()
+            saved_depth = None if self.current_depth is None else self.current_depth.copy()
 
-        if (request.command == 'detect_flip'):
+        if request.command == 'detect_flip' and saved_frame is not None:
             saved_frame = cv2.flip(saved_frame, 0)
 
         """Async handler for detect command"""
-        if saved_frame is None or self.current_depth is None:
+        if saved_frame is None or saved_depth is None or self.tf_handler.intrinsics is None:
             return {
                 'success': False,
                 'message': "No frame available"
@@ -67,14 +75,15 @@ class DetectionHandler:
                 if cls_id == request.identifier and conf > request.conf:
                     x_center = int((box[0] + box[2]) / 2)
                     y_center = int((box[1] + box[3]) / 2)
-                    avg_depth = self.get_average_depth(int(x_center), int(y_center))
+                    depth_y = saved_frame.shape[0] - 1 - y_center if request.command == 'detect_flip' else y_center
+                    avg_depth = self.get_average_depth(x_center, depth_y, depth=saved_depth)
 
                     # if invalid 
                     if np.isnan(avg_depth):
                         print(f"INVALID DEPTH!!!! SKIPPING!!!!")
                         continue
                     
-                    point_3d = self.tf_handler.pixel_to_3d(x_center, y_center, avg_depth)
+                    point_3d = self.tf_handler.pixel_to_3d(x_center, depth_y, avg_depth)
 
                     if not point_3d:
                         continue
@@ -96,13 +105,16 @@ class DetectionHandler:
                         # Transform the point to base frame
                         base_pose = self.tf_handler.transform_to_base(point_msg)
                         
+                        if base_pose is None:
+                            return {'success': False, 'message': 'Target-frame transform unavailable'}
                         # Create new point with transformed coordinates
                         transformed_point = Point()
 
                         # the minus sign converts to actual coordinates wrt. base_link
-                        transformed_point.x = -base_pose.x
-                        transformed_point.y = -base_pose.y
-                        transformed_point.z = base_pose.z
+                        signs = self.node.get_parameter('legacy_base_sign').value if self.node.get_parameter('coordinate_mode').value == 'legacy' else [1.0, 1.0, 1.0]
+                        transformed_point.x = signs[0] * base_pose.x
+                        transformed_point.y = signs[1] * base_pose.y
+                        transformed_point.z = signs[2] * base_pose.z
                         
                         detections.append(transformed_point)
                         self.last_detections.append(vis_data)
@@ -136,12 +148,14 @@ class DetectionHandler:
     
     def update_frames(self, color_msg, depth_msg):
         try:
-            self.current_frame = self.bridge.imgmsg_to_cv2(color_msg, 'bgr8')
-            self.current_depth = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
+            frame = self.bridge.imgmsg_to_cv2(color_msg, 'bgr8')
+            depth = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
+            with self.frame_lock:
+                self.current_frame, self.current_depth = frame, depth
         except Exception as e:
             self.node.get_logger().error(f"Image conversion failed: {str(e)}")
 
-    def get_average_depth(self, x_center, y_center, sampling_radius=5):
+    def get_average_depth(self, x_center, y_center, sampling_radius=5, depth=None):
         """
         Compute average depth in a small fixed window around center.
         
@@ -153,9 +167,10 @@ class DetectionHandler:
             float: Robust average depth
         """
         # Extract fixed-size patch
-        depth_patch = self.current_depth[
-            max(0, y_center - sampling_radius):min(self.current_depth.shape[0], y_center + sampling_radius + 1),
-            max(0, x_center - sampling_radius):min(self.current_depth.shape[1], x_center + sampling_radius + 1)
+        depth = self.current_depth if depth is None else depth
+        depth_patch = depth[
+            max(0, y_center - sampling_radius):min(depth.shape[0], y_center + sampling_radius + 1),
+            max(0, x_center - sampling_radius):min(depth.shape[1], x_center + sampling_radius + 1)
         ]
         
         # Process valid depths

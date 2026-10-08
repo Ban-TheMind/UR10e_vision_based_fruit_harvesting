@@ -7,8 +7,8 @@
 
   <!-- UR5e robot arm -->
   <!-- URDF won't build if following args aren't defined. -->
-  <xacro:arg name="name" default="ur10"/>
-  <xacro:arg name="ur_type" default="ur10"/>
+  <xacro:arg name="name" default="ur10e"/>
+  <xacro:arg name="ur_type" default="ur10e"/>
   <xacro:include filename="$(find ur_description)/urdf/ur.urdf.xacro"/>
 
  <!-- Simple rectangular end-effector -->
@@ -44,6 +44,8 @@
 
   </joint>
 
+  <xacro:arg name="camera_mount" default="wrist"/>
+  <xacro:if value="${'$(arg camera_mount)' == 'wrist'}">
   <link name="camera_link"> </link>
 
   <joint name="camera_joint" type="fixed">
@@ -53,4 +55,5 @@
       <origin xyz="0.0199931 -0.0028582 -0.109958" rpy="3.12825 -3.12574 -3.13495" />
   </joint>
 
+  </xacro:if>
 </robot>

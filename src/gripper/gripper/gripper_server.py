@@ -8,11 +8,18 @@ import requests
 class GripperServer(Node):
     def __init__(self):
         super().__init__('gripper_server')
+        self.declare_parameter('gripper_host', '192.168.1.1')
+        self.declare_parameter('http_timeout', 5.0)
+        self.declare_parameter('commands_enabled', False)
         self.srv = self.create_service(GripperCmd, 'gripper_cmd', self.gripper_callback)
-        self.srv = self.create_service(ResetGripperCmd, 'reset_gripper_cmd', self.reset_gripper_callback)
+        self.reset_srv = self.create_service(ResetGripperCmd, 'reset_gripper_cmd', self.reset_gripper_callback)
         self.get_logger().info('Gripper Server ready to receive commands...')
         
     def gripper_callback(self, request, response):
+        if not self.get_parameter('commands_enabled').value:
+            response.success = False
+            response.message = 'Gripper commands disabled; launch with motion_enabled:=true'
+            return response
         # Validate width
         if not (0 <= request.width <= 100):
             response.success = False
@@ -27,8 +34,8 @@ class GripperServer(Node):
             
         try:
             # Send command to gripper
-            url = f"http://192.168.1.1/api/dc/rgxp2/set_width/0/{request.width}/{request.force}"
-            res = requests.get(url)
+            url = f"http://{self.get_parameter('gripper_host').value}/api/dc/rgxp2/set_width/0/{request.width}/{request.force}"
+            res = requests.get(url, timeout=self.get_parameter('http_timeout').value)
             
             if res.status_code == 200:
                 response.success = True
@@ -45,6 +52,10 @@ class GripperServer(Node):
 
   
     def reset_gripper_callback(self, request, response):  
+        if not self.get_parameter('commands_enabled').value:
+            response.success = False
+            response.message = 'Gripper commands disabled'
+            return response
         reset = request.reset_gripper
 
         if not reset:
@@ -54,8 +65,8 @@ class GripperServer(Node):
 
         try:
             # Send command to gripper
-            url = f"http://192.168.1.1/api/dc/reset_tool_power"
-            res = requests.get(url)
+            url = f"http://{self.get_parameter('gripper_host').value}/api/dc/reset_tool_power"
+            res = requests.get(url, timeout=self.get_parameter('http_timeout').value)
             
             if res.status_code == 200:
                 response.success = True

@@ -14,12 +14,16 @@ class VisualisationHandler:
         self.marker_pub = node.create_publisher(MarkerArray, 'detected_objects', 10)
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(node)
         
+        self.show_image = node.get_parameter('show_image').value
         # OpenCV setup
-        cv2.namedWindow("Object Detection", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Object Detection", 1280, 720)
+        if self.show_image:
+            cv2.namedWindow("Object Detection", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Object Detection", 1280, 720)
                 
     def update_cv_visualization(self, display_frame, detections):
         """Update the visualization window with frame and detections passed in"""
+        if not self.show_image:
+            return
         if display_frame is None:
             self.node.get_logger().info("No frame available for visualization", 
                                  throttle_duration_sec=1.0)
@@ -71,11 +75,11 @@ class VisualisationHandler:
             for i, detection in enumerate(detections):
                 point_3d = detection['point_3d']
 
-                self.tf_handler.publish_transform(frame_id="camera_link", child_frame_id=f"detected_object_{i}", point=point_3d)
+                self.tf_handler.publish_transform(frame_id=self.node.get_parameter('camera_frame').value, child_frame_id=f"detected_object_{i}", point=point_3d)
 
                 # Create RViz marker
                 marker = Marker()
-                marker.header.frame_id = "camera_link"
+                marker.header.frame_id = self.node.get_parameter('camera_frame').value
                 marker.header.stamp = self.node.get_clock().now().to_msg()
                 marker.ns = "detections"
                 marker.id = i
@@ -109,4 +113,5 @@ class VisualisationHandler:
             self.node.get_logger().error(f"RViz Visualization error: {str(e)}")
         
     def cleanup(self):
-        cv2.destroyAllWindows()
+        if self.show_image:
+            cv2.destroyAllWindows()

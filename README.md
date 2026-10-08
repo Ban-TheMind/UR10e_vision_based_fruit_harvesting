@@ -35,43 +35,23 @@
 
 
 ### Workspace setup
-On Linux x86-64, install the isolated ROS 2 Humble environment with:
+
+本工位使用 Ubuntu 24.04、glibc 2.39 和 Pixi 隔离的 ROS 2 Humble 环境。
+原始研究开发环境为 Ubuntu 22.04；当前锁定依赖要求 glibc 2.39。
 
 ```bash
 ./scripts/pixi install
-./scripts/pixi run build
-./scripts/pixi run ros2 pkg list
+./scripts/project build
+./scripts/project check
+./scripts/project fake
 ```
 
-`scripts/pixi` downloads Pixi into this workspace and keeps its package cache and
-environment here; root access is not required. Use `./scripts/pixi run <command>`
-for ROS commands. The original demos expect a connected UR10e, RG2 gripper and
-RealSense camera. The default `display.launch.py` connects to the physical robot;
-do not launch it until the robot network and safety setup are ready.
+- [工位与实验室操作](docs/operation.md)
+- [模块职责](docs/architecture.md)
+- [真机部署核对清单](docs/field_verification.md)
 
-The environment includes the ROS RealSense driver and Python `pyrealsense2`.
-Its binary dependencies require glibc 2.39, so this lockfile targets Ubuntu
-24.04 or another Linux system with glibc 2.39 or newer.
-
-Before connecting to the real robot, complete [the field verification checklist](docs/field_verification.md).
-The provided Eye-to-Hand calibration is stored in `config/camera_to_base.json` but
-is not active until its ROS source and target frames are confirmed.
-
-* Camera
-* custom_interface
-  * contains ROS2 `.srv` and `.msg`
-* demo_package
-* end_effector_description
-* gripper
-* moveit_path_planner
-  * define services that move the arm
-* ur10e_moveit_config
-  * created using `moveit_setup_assistant`
-  * uses RRTConnect planner
-* ur10e_moveit_config_official
-  * cloned from `UR_ROS2_DRIVER` package developed by Universal Robotics
-  * uses TRRT planner by default
-    * the planner can be changed via `ompl_planning.yaml` file
+现场配置入口为 `src/harvesting_bringup/config/lab.yaml`；修改配置无需重新构建。
+`fake` 使用假硬件，不是物理仿真。默认启动不运行自动采摘。
 
 ## Demo videos
 
@@ -91,17 +71,17 @@ is not active until its ROS source and target frames are confirmed.
 
 ## How to run the demos
 
-### Horizontal Pick & Place
-* Switch to `origin/david_hor_variousHeight_backup` branch
-* Build and source the workspace
-* In one terminal, run `ros2 launch end_effector_description display.launch.py`
-* In another terminal, run `ros2 run demo_package horizontal_fruit_gripping_demo`
+Current laboratory entry points:
 
-### Vertical Fruit Harvesting
-* Switch to `main` branch
-* Build and source the workspace
-* In one terminal, run `ros2 launch end_effector_description display.launch.py`
-* In another terminal, run `ros2 run demo_package vertical_fruit_gripping_demo.py`
+```bash
+./scripts/project camera
+./scripts/project robot
+./scripts/project gripper
+```
+
+See [operation.md](docs/operation.md) for explicit actuator enablement and the separate automatic task entry.
+The original horizontal strategy remains as source for comparison; the default field task is vertical harvesting.
+Do not use the original historical launch commands as the field procedure.
 
 ## Depth Camera Visualisation
 
@@ -115,19 +95,9 @@ is not active until its ROS source and target frames are confirmed.
 
 ## How to test Gripper
 
-1. First, connect the Ethernet Cable from Web Client port of the Eye Box 
-2. Then, go to 192.168.1.1 to make sure you are logged in with username: `admin` and password: `OnRobot1`
-3. Now, go to Devices -> RG2 and manually move the `width` bar around, see if it works
-4. Finally, test it in a terminal, `curl "http://192.168.1.1/api/dc/rgxp2/set_width/0/{width}/{force}"`; width=[0,100], force=[3,40]
-
-e.g. 
-	Grip: `curl "http://192.168.1.1/api/dc/rgxp2/set_width/0/0/40"`
-	Release: `curl "http://192.168.1.1/api/dc/rgxp2/set_width/0/100/40"`
-
-If that worked, we are now ready to launch the gripper package
-
-In one terminal: `ros2 run gripper gripper_server`
-In another terminal: `ros2 run gripper gripper_client`
+Use `./scripts/project gripper` to start the request endpoint without actuating the device.
+Enable commands explicitly as described in [operation.md](docs/operation.md).
+Device address and HTTP timeout are configured in `lab.yaml`; do not edit the Python script.
 
 ### End-effector Visualisation
 

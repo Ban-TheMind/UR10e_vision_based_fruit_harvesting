@@ -2,7 +2,7 @@ import rclpy
 import tf2_ros
 from geometry_msgs.msg import Point, Pose, TransformStamped
 import tf_transformations
-from rclpy.time import Time
+from rclpy.qos import qos_profile_sensor_data
 import pyrealsense2 as rs
 from sensor_msgs.msg import CameraInfo
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -19,9 +19,9 @@ class TFHandler:
         
         self.cam_info_sub = self.node.create_subscription(
             CameraInfo,
-            '/camera/camera/aligned_depth_to_color/camera_info',
+            self.node.get_parameter('camera_info_topic').value,
             self.camera_info_callback,
-            10,
+            qos_profile_sensor_data,
         )
 
     def camera_info_callback(self, msg):
@@ -38,17 +38,19 @@ class TFHandler:
             self.intrinsics.coeffs = list(msg.d)
             self.node.get_logger().info("Camera intrinsics received")
 
-    def transform_to_base(self, point, from_frame='camera_link'):
+    def transform_to_base(self, point, from_frame=None):
+        from_frame = from_frame or self.node.get_parameter('camera_frame').value
+        target_frame = self.node.get_parameter('target_frame').value if self.node.get_parameter('coordinate_mode').value == 'tf' else 'base'
         try:
-            if self.tf_buffer.can_transform('base', from_frame, rclpy.time.Time(), rclpy.duration.Duration(seconds=2.0)):
+            if self.tf_buffer.can_transform(target_frame, from_frame, rclpy.time.Time(), rclpy.duration.Duration(seconds=2.0)):
                 transform = self.tf_buffer.lookup_transform(
-                    'base', from_frame,
+                    target_frame, from_frame,
                     rclpy.time.Time(),
                     timeout=rclpy.duration.Duration(seconds=2.0))
                 
                 pose = Pose()
                 pose.position = point
-                pose.orientation = Quaternion()  # Add this line to prevent NoneType errors
+                pose.orientation = Quaternion(w=1.0)  # Add this line to prevent NoneType errors
                 
                 transformed = tf2_geometry_msgs.do_transform_pose(pose, transform)
                 return transformed.position
@@ -81,10 +83,11 @@ class TFHandler:
         
     def transform_camera_to_world(self, point):
         """Proper coordinate transformation from camera to world frame"""
+        offset = self.node.get_parameter('legacy_offset').value
         return [
-            point[2],   # Camera Z -> World X (forward)
-            -point[1] + 0.038 + 0.20,   # this is -(robot x)
-            -point[0] - 0.18,  # this is -(robot y)
+            point[2] + offset[0],   # Camera Z -> World X (forward)
+            -point[1] + offset[1],   # this is -(robot x)
+            -point[0] + offset[2],  # this is -(robot y)
         ]
     
     def pixel_to_3d(self, pixel_x, pixel_y, depth_value):
@@ -92,7 +95,7 @@ class TFHandler:
         # Convert to camera frame coordinates (X right, Y down, Z forward)
         point_3d = rs.rs2_deproject_pixel_to_point(
             self.intrinsics,
-            [pixel_y, pixel_x],
-            depth_value * 0.001  # mm to meters
+            [pixel_y, pixel_x] if self.node.get_parameter('coordinate_mode').value == 'legacy' else [pixel_x, pixel_y],
+            depth_value * self.node.get_parameter('depth_scale').value  # mm to meters
         )
-        return self.transform_camera_to_world(point_3d)
+        return self.transform_camera_to_world(point_3d) if self.node.get_parameter('coordinate_mode').value == 'legacy' else point_3d
