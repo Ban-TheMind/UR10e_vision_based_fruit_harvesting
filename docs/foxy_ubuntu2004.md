@@ -31,7 +31,7 @@ sudo apt-get install --no-install-recommends \
 python tools/offline_preflight.py
 ```
 
-此入口检查 Python/ROS 包配置语法、现场 IP/序列号配置、Foxy 包布局、相机像素到空间坐标、深度单位、YOLO 子进程通信协议、夹爪默认禁止网络命令，以及 C++ 运动请求策略（若有 `g++`）。它只处理仓库内的数据，不连接 ROS 图、相机或机械臂。模型文件若仍是 Git LFS 占位符会给出提示；可加 `--require-model` 把该情况作为失败。
+此入口检查 Python/ROS 包配置语法、现场 IP/序列号配置、Foxy 包布局、相机像素到空间坐标、深度单位、YOLO 子进程通信协议、夹爪默认禁止设备命令，以及 C++ 运动请求策略（若有 `g++`）。它只处理仓库内的数据，不连接 ROS 图、相机或机械臂。模型文件若仍是 Git LFS 占位符会给出提示；可加 `--require-model` 把该情况作为失败。
 
 回到 Ubuntu 20.04 主机后，先保留并核对现场目录中的未提交改动，再同步本分支。然后运行：
 
@@ -71,3 +71,5 @@ python tools/test_inference_worker.py
 - 确认 RealSense SDK 序列号 `406122071837` 的 ROS 话题来自固定在手外的那台相机，并检查 RGB、对齐深度、CameraInfo 的尺寸和编码。
 - 该相机实际支持 640×480 的 6/15/30 fps；Foxy 启动配置使用 RGB 和深度均为 15 fps。
 - 在自主运动前，用独立测量的静止点核查 Camera → Base 的位置误差，并逐项核查末端工具、TCP、负载、速度和作业边界。
+
+夹爪后端已与 main 同步为官方 SDK；构建夹爪时会同时构建 `robotiq_sdk_bridge`，无需安装 Python 串口库。固定相机矩阵见相机包的 `camera/calibration/camera_to_base.json`，与 main 共用相同定义。

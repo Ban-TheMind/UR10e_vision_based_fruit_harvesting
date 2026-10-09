@@ -1,27 +1,53 @@
 """Camera geometry that can be checked without ROS or robot hardware."""
 
 import math
+import json
+from pathlib import Path
 
 
-# Aligned color optical frame -> UR controller base frame, in meters.
-CAMERA_TO_BASE = (
-    (-0.14168, -0.28354, 0.94844, -0.12025),
-    (-0.98968, 0.019898, -0.14189, 0.41004),
-    (0.021358, -0.95875, -0.28343, 0.39921),
-    (0.0, 0.0, 0.0, 1.0),
-)
+CALIBRATION_FILE = Path(__file__).parent / 'calibration/camera_to_base.json'
 
 
-def camera_point_to_base(x, y, z):
+def load_calibration(path=None):
+    data = json.loads(Path(path or CALIBRATION_FILE).read_text())
+    if (data.get('source_frame') != 'camera_color_optical_frame' or
+            data.get('target_frame') != 'base' or data.get('units') != 'm'):
+        raise ValueError('Calibration must map color optical frame to UR base in meters')
+    matrix = data['matrix']
+    if len(matrix) != 4 or any(len(row) != 4 for row in matrix):
+        raise ValueError('Calibration must be a 4x4 matrix')
+    if not all(math.isfinite(value) for row in matrix for value in row):
+        raise ValueError('Calibration must be finite')
+    if matrix[3] != [0, 0, 0, 1]:
+        raise ValueError('Invalid homogeneous calibration row')
+    rotation = [row[:3] for row in matrix[:3]]
+    for i in range(3):
+        for j in range(3):
+            product = sum(rotation[k][i]*rotation[k][j] for k in range(3))
+            if abs(product - int(i == j)) > 1e-3:
+                raise ValueError('Calibration rotation must be orthonormal')
+    a,b,c = rotation
+    determinant = a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0])
+    if abs(determinant-1) > 1e-3:
+        raise ValueError('Calibration rotation must have determinant +1')
+    if data.get('rotation') != rotation or data.get('translation_m') != [row[3] for row in matrix[:3]]:
+        raise ValueError('Calibration matrix and TF fields differ')
+    return tuple(tuple(row) for row in matrix)
+
+
+CAMERA_TO_BASE = load_calibration()
+
+
+def camera_point_to_base(x, y, z, matrix=CAMERA_TO_BASE):
     """Apply the measured eye-to-hand transform to a point in meters."""
     if not all(math.isfinite(v) for v in (x, y, z)):
         raise ValueError("Camera coordinates must be finite")
     return tuple(sum(row[i] * (x, y, z)[i] for i in range(3)) + row[3]
-                 for row in CAMERA_TO_BASE[:3])
+                 for row in matrix[:3])
 
 
 def controller_base_to_base_link(x, y, z):
-    """Apply the Foxy UR description's 180 degree Z rotation for planning."""
+    """Apply the UR description's 180 degree Z rotation for planning."""
     if not all(math.isfinite(v) for v in (x, y, z)):
         raise ValueError("Base coordinates must be finite")
     return (-x, -y, z)

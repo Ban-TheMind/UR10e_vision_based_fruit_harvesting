@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from custom_interface.srv import GripperCmd, ResetGripperCmd
-from gripper.robotiq_rtu import RobotiqRTU
+from gripper.robotiq_sdk import RobotiqSDK
 
 
 class GripperServer(Node):
@@ -22,7 +22,7 @@ class GripperServer(Node):
         values = {name: self.get_parameter(name).value for name in
                   ('serial_port', 'baudrate', 'slave_id', 'serial_timeout', 'action_timeout', 'speed')}
         values['port'] = values.pop('serial_port')
-        return RobotiqRTU(**values)
+        return RobotiqSDK(**values)
 
     def gripper_callback(self, request, response):
         response.success = False
@@ -30,8 +30,8 @@ class GripperServer(Node):
             response.message = 'Gripper commands disabled; explicitly enable motion in launch'
             return response
         try:
-            # Validate before opening a serial device.
-            from gripper.robotiq_rtu import position_for_width
+            # Validate before invoking the official SDK.
+            from gripper.robotiq_sdk import position_for_width
             position_for_width(request.width)
             if not 0 <= request.force <= 255:
                 raise ValueError('force must be 0..255 (raw Robotiq value, not N)')

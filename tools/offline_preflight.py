@@ -107,7 +107,7 @@ def main():
     run("camera geometry and depth units", [sys.executable, "tools/test_offline_geometry.py"])
     run("YOLO transport protocol without weights", [
         sys.executable, "tools/test_inference_protocol.py"])
-    run("gripper defaults block network commands",
+    run("gripper defaults block device commands",
         [sys.executable, "src/gripper/test/test_gripper_safety.py"])
     compiler = shutil.which("g++")
     if compiler:

@@ -2,7 +2,7 @@ import tf2_ros
 from rclpy.qos import qos_profile_sensor_data
 from geometry_msgs.msg import Point, TransformStamped
 from sensor_msgs.msg import CameraInfo
-from .geometry import CAMERA_TO_BASE, camera_point_to_base, deproject_pixel
+from .geometry import CAMERA_TO_BASE, camera_point_to_base, deproject_pixel, load_calibration
 
 
 class TFHandler:
@@ -10,10 +10,15 @@ class TFHandler:
         self.node = node
         self.broadcaster = tf2_ros.TransformBroadcaster(self.node)
         self.camera_info = None
+        for name, default in (('camera_info_topic', '/camera/camera/aligned_depth_to_color/camera_info'),
+                              ('calibration_file', '')):
+            if not node.has_parameter(name):
+                node.declare_parameter(name, default)
+        self.calibration_matrix = load_calibration(node.get_parameter('calibration_file').value or None)
         
         self.cam_info_sub = self.node.create_subscription(
             CameraInfo,
-            '/camera/camera/aligned_depth_to_color/camera_info',
+            node.get_parameter('camera_info_topic').value,
             self.camera_info_callback,
             qos_profile_sensor_data,
         )
@@ -34,7 +39,7 @@ class TFHandler:
 
     def transform_to_base(self, point):
         """Convert an optical-frame camera point to the UR base frame."""
-        coordinates = camera_point_to_base(point.x, point.y, point.z)
+        coordinates = camera_point_to_base(point.x, point.y, point.z, getattr(self, 'calibration_matrix', CAMERA_TO_BASE))
         result = Point()
         result.x, result.y, result.z = coordinates
         return result
