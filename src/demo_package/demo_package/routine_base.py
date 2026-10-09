@@ -14,7 +14,7 @@ class RoutineBase(Node):
             'service_timeout': 120.0, 'startup_timeout': 30.0, 'max_cycles': 1,
             'max_attempts': 3, 'max_detect_attempts': 20,
             'detection_class': 0, 'detection_confidence': 0.5, 'detection_min_confidence': 0.2,
-            'gripper_open_width': 100, 'gripper_close_width': 0, 'gripper_force': 40,
+            'gripper_open_width': 85, 'gripper_close_width': 0, 'gripper_force': 40,
             'settle_seconds': 1.5, 'grip_seconds': 2.0,
             **defaults,
         }

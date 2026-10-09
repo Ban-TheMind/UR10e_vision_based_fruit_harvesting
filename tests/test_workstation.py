@@ -115,7 +115,7 @@ class TaskSequenceTests(unittest.TestCase):
             max_cycles=1, birds_eye_joint_pos=[0.0] * 6,
             bird_eye_position=[0.0] * 6, drop_position=[0.0] * 6,
             approach_offset=[-0.5, 0.0, -0.1], pick_offset=[-0.18, 0.06, -0.03],
-            pick_orientation=[0.0] * 3, gripper_open_width=100, gripper_close_width=0,
+            pick_orientation=[0.0] * 3, gripper_open_width=85, gripper_close_width=0,
             grip_seconds=0.0, get_logger=Mock(),
             run_detection_at_curr_pos=Mock(return_value=[point]),
             run_detection_at_pos=Mock(return_value=[point]),
@@ -129,9 +129,9 @@ class TaskSequenceTests(unittest.TestCase):
         state.send_gripper_request.side_effect = lambda width: events.append(('gripper', width))
         state.send_movement_request.side_effect = lambda pose, *args: events.append(('move', pose))
         routine.run_demo(state)
-        self.assertEqual([v for kind, v in events if kind == 'gripper'], [100, 0, 100])
+        self.assertEqual([v for kind, v in events if kind == 'gripper'], [85, 0, 85])
         closed = events.index(('gripper', 0))
-        released = events.index(('gripper', 100), closed)
+        released = events.index(('gripper', 85), closed)
         self.assertTrue(any(kind == 'move' for kind, _ in events[closed+1:released]))
 
     def test_failed_pick_motion_prevents_close_and_transport(self):
@@ -140,7 +140,7 @@ class TaskSequenceTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             routine.run_demo(state)
         self.assertEqual(state.send_movement_request.call_count, 2)
-        state.send_gripper_request.assert_called_once_with(100)
+        state.send_gripper_request.assert_called_once_with(85)
 
 if __name__ == '__main__':
     unittest.main()

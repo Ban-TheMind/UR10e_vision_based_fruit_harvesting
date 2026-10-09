@@ -1,92 +1,77 @@
 #!/usr/bin/env python3
-
+"""ROS services for Robotiq 2F-85; device access requires explicit enablement."""
 import rclpy
 from rclpy.node import Node
 from custom_interface.srv import GripperCmd, ResetGripperCmd
-import requests
+from gripper.robotiq_rtu import RobotiqRTU
+
 
 class GripperServer(Node):
     def __init__(self):
         super().__init__('gripper_server')
-        self.declare_parameter('gripper_host', '192.168.1.1')
-        self.declare_parameter('http_timeout', 5.0)
         self.declare_parameter('commands_enabled', False)
+        for name, value in [('serial_port', '/dev/ttyUSB0'), ('baudrate', 115200),
+                            ('slave_id', 9), ('serial_timeout', 0.5),
+                            ('action_timeout', 10.0), ('speed', 64)]:
+            self.declare_parameter(name, value)
         self.srv = self.create_service(GripperCmd, 'gripper_cmd', self.gripper_callback)
         self.reset_srv = self.create_service(ResetGripperCmd, 'reset_gripper_cmd', self.reset_gripper_callback)
-        self.get_logger().info('Gripper Server ready to receive commands...')
-        
+        self.get_logger().info('Robotiq 2F-85 services ready; no automatic activation')
+
+    def _driver(self):
+        values = {name: self.get_parameter(name).value for name in
+                  ('serial_port', 'baudrate', 'slave_id', 'serial_timeout', 'action_timeout', 'speed')}
+        values['port'] = values.pop('serial_port')
+        return RobotiqRTU(**values)
+
     def gripper_callback(self, request, response):
+        response.success = False
         if not self.get_parameter('commands_enabled').value:
-            response.success = False
-            response.message = 'Gripper commands disabled; launch with motion_enabled:=true'
+            response.message = 'Gripper commands disabled; explicitly enable motion in launch'
             return response
-        # Validate width
-        if not (0 <= request.width <= 100):
-            response.success = False
-            response.message = f'Width must be between 0-100 (received {request.width})'
-            return response
-            
-        # Validate force
-        if not (3 <= request.force <= 40):
-            response.success = False
-            response.message = f'Force must be between 3-40 (received {request.force})'
-            return response
-            
         try:
-            # Send command to gripper
-            url = f"http://{self.get_parameter('gripper_host').value}/api/dc/rgxp2/set_width/0/{request.width}/{request.force}"
-            res = requests.get(url, timeout=self.get_parameter('http_timeout').value)
-            
-            if res.status_code == 200:
-                response.success = True
-                response.message = f'Gripper set to width {request.width} with force {request.force}'
-            else:
-                response.success = False
-                response.message = f'Gripper command failed with HTTP status {res.status_code}'
-                
-        except Exception as e:
-            response.success = False
-            response.message = f'Error communicating with gripper: {str(e)}'
-            
+            # Validate before opening a serial device.
+            from gripper.robotiq_rtu import position_for_width
+            position_for_width(request.width)
+            if not 0 <= request.force <= 255:
+                raise ValueError('force must be 0..255 (raw Robotiq value, not N)')
+            with self._driver() as driver:
+                status = driver.move(request.width, request.force)
+            response.success = True
+            response.message = ('Gripper stopped: object_state={}, position_raw={}; '
+                                'requested width={} mm (nominal), force_raw={}').format(
+                                    status.object_state, status.position, request.width, request.force)
+        except Exception as error:
+            response.message = 'Gripper command failed: {}'.format(error)
         return response
 
-  
-    def reset_gripper_callback(self, request, response):  
+    def reset_gripper_callback(self, request, response):
+        response.success = False
         if not self.get_parameter('commands_enabled').value:
-            response.success = False
             response.message = 'Gripper commands disabled'
             return response
-        reset = request.reset_gripper
-
-        if not reset:
-            response.success = False
-            response.message = f'Reset denied by user input'
+        if not request.reset_gripper:
+            response.message = 'Reset denied by user input'
             return response
-
         try:
-            # Send command to gripper
-            url = f"http://{self.get_parameter('gripper_host').value}/api/dc/reset_tool_power"
-            res = requests.get(url, timeout=self.get_parameter('http_timeout').value)
-            
-            if res.status_code == 200:
-                response.success = True
-                response.message = f'Gripper reset success'
-            else:
-                response.success = False
-                response.message = f'Gripper command failed with HTTP status {res.status_code}'
-                
-        except Exception as e:
-            response.success = False
-            response.message = f'Error communicating with gripper: {str(e)}'
-            
+            with self._driver() as driver:
+                driver.activate()
+            response.success = True
+            response.message = 'Robotiq reset and activation complete (not tool power reset)'
+        except Exception as error:
+            response.message = 'Gripper activation failed: {}'.format(error)
         return response
 
 
 def main(args=None):
     rclpy.init(args=args)
-    gripper_server = GripperServer()
-    rclpy.spin(gripper_server)
-    rclpy.shutdown()
+    server = GripperServer()
+    try:
+        rclpy.spin(server)
+    finally:
+        server.destroy_node()
+        rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

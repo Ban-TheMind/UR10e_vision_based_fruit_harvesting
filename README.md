@@ -4,8 +4,8 @@
 **Supervisor**: Dr. Leo Wu
 
 **Robot**: UR10e  
-**End-effector setup**: OnRobot RG2 V2 + Quick Changer (QC)  
-**Depth Camera**: OnRobot Eye System (Intel Realsense 415 Depth Camera)  
+**Laboratory gripper**: Robotiq 2F-85, USB/RS-485 Modbus RTU (115200/8N1, slave 9)
+**Depth Camera**: Intel RealSense (confirm laboratory device configuration)
 **Dev Env**: `Ubuntu 22.04`  
 **Dev tools**: `MoveIt!`, `ROS2 Humble`, `YOLOv11`, `hand-eye calibration`  
 
@@ -97,7 +97,8 @@ Do not use the original historical launch commands as the field procedure.
 
 Use `./scripts/project gripper` to start the request endpoint without actuating the device.
 Enable commands explicitly as described in [operation.md](docs/operation.md).
-Device address and HTTP timeout are configured in `lab.yaml`; do not edit the Python script.
+Robotiq 2F-85 uses serial Modbus RTU. Serial settings are configured in `lab.yaml`.
+See [robotiq_serial.md](docs/robotiq_serial.md) for units, read-only status, and explicit activation.
 
 ### End-effector Visualisation
 

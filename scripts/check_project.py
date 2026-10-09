@@ -37,7 +37,11 @@ def validate_profile(config):
         if len(value) != 6 or not all(math.isfinite(x) for x in value) or any(x <= 0 for x in value[:3]):
             raise ValueError(f'Invalid scene geometry: {name}')
     gripper = config['gripper_server']['ros__parameters']
-    if not gripper['gripper_host'] or gripper['http_timeout'] <= 0:
+    if (not gripper['serial_port'] or gripper['baudrate'] <= 0
+            or not 1 <= gripper['slave_id'] <= 247
+            or not 0 <= gripper['speed'] <= 255
+            or not all(math.isfinite(gripper[key]) and gripper[key] > 0
+                       for key in ('serial_timeout', 'action_timeout'))):
         raise ValueError('Invalid gripper configuration')
     task = config['demo_routine']['ros__parameters']
     for name, size in {'bird_eye_position': 6, 'birds_eye_joint_pos': 6, 'drop_position': 6, 'approach_offset': 3, 'pick_offset': 3, 'pick_orientation': 3, 'retry_scan_delta': 6, 'retry_grip_delta': 6}.items():
@@ -48,7 +52,7 @@ def validate_profile(config):
             raise ValueError(f'{name} must be positive')
     if not 0 <= task['detection_min_confidence'] <= task['detection_confidence'] <= 1:
         raise ValueError('Invalid detection confidence')
-    if not 0 <= task['gripper_open_width'] <= 100 or not 0 <= task['gripper_close_width'] <= 100 or not 3 <= task['gripper_force'] <= 40:
+    if not 0 <= task['gripper_open_width'] <= 85 or not 0 <= task['gripper_close_width'] <= 85 or not 0 <= task['gripper_force'] <= 255:
         raise ValueError('Invalid gripper task parameters')
     if deployment['calibration_verified'] and camera['coordinate_mode'] != 'tf':
         raise ValueError('Field-verified deployment must use explicit optical-frame tf mode')
@@ -76,7 +80,7 @@ def main():
         for file in (root / 'src').rglob('package.xml'):
             ET.parse(file)
     check('source syntax / package manifests', sources)
-    for name in ('rclpy', 'cv_bridge', 'pyrealsense2', 'tf2_geometry_msgs', 'tf_transformations', 'message_filters', 'requests'):
+    for name in ('rclpy', 'cv_bridge', 'pyrealsense2', 'tf2_geometry_msgs', 'tf_transformations', 'message_filters', 'serial'):
         check(f'import {name}', lambda name=name: importlib.import_module(name))
     for name in ('harvesting_bringup', 'camera', 'gripper', 'demo_package', 'moveit_path_planner', 'ur_robot_driver', 'ur10e_moveit_config_official', 'realsense2_camera'):
         check(f'installed package {name}', lambda name=name: get_package_share_directory(name))
