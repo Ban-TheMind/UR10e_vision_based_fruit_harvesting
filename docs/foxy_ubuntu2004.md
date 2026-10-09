@@ -73,3 +73,19 @@ python tools/test_inference_worker.py
 - 在自主运动前，用独立测量的静止点核查 Camera → Base 的位置误差，并逐项核查末端工具、TCP、负载、速度和作业边界。
 
 夹爪后端已与 main 同步为官方 SDK；构建夹爪时会同时构建 `robotiq_sdk_bridge`，无需安装 Python 串口库。固定相机矩阵见相机包的 `camera/calibration/camera_to_base.json`，与 main 共用相同定义。
+
+
+## Foxy headless 与 scaled 执行
+
+2026-10-09 现场读取确认：已安装的 `/opt/ros/foxy/share/ur_description/urdf/ur.ros2_control.xacro`
+将 `headless_mode` 硬编码为 `0`，上层 `ur.urdf.xacro` 也不转发此参数。
+项目驱动 launch 在 xacro 展开后，只将真实 UR 硬件的该参数改为请求的 `1`/`0`，
+并对缺失或重复参数立即报错。无需修改系统包；fake hardware 不受影响。
+`headless_mode:=true` 仍要求示教器远程控制、已上电解除制动且安全状态正常。
+启动后应读取 `/controller_manager` 的 `robot_description` 确认参数为 `1`，
+并独立核对 runtime_state、速度缩放和 reverse 控制连接，不能将控制器启动当作程序运行成功。
+
+选用 `scaled_joint_trajectory_controller` 时关闭 MoveIt 按名义轨迹时长计算的执行超时，
+以允许示教器速度滑块改变实际执行时间；普通控制器保留原监控。
+这不解决机器人程序停止或速度为零，也不证明 Home 完成。
+发送运动的入口必须另设有限等待、故障/停滞取消，并核对 action 结果与最终关节角。

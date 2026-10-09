@@ -286,6 +286,13 @@ def launch_setup(context):
 
     trajectory_execution = {
         "moveit_manage_controllers": False,
+        # Scaled controller execution follows the robot speed slider, so nominal
+        # trajectory duration is not a wall-clock deadline. The caller must
+        # enforce a bounded execution and cancel on stalled/unsafe robot state.
+        "trajectory_execution.execution_duration_monitoring": (
+            LaunchConfiguration("robot_controller").perform(context)
+            != "scaled_joint_trajectory_controller"
+        ),
         "trajectory_execution.allowed_execution_duration_scaling": 1.2,
         "trajectory_execution.allowed_goal_duration_margin": 0.5,
         "trajectory_execution.allowed_start_tolerance": 0.01,

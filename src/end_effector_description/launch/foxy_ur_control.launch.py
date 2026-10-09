@@ -15,11 +15,29 @@
 # Author: Denis Stogl
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+
+
+def configure_headless_mode(urdf, enabled, use_fake_hardware):
+    """Apply the requested mode even when the installed Foxy Xacro hardcodes 0."""
+    import xml.etree.ElementTree as ET
+
+    if use_fake_hardware:
+        return urdf
+    root = ET.fromstring(urdf)
+    hardware = [element for element in root.findall("./ros2_control/hardware")
+                if element.findtext("plugin") == "ur_robot_driver/URPositionHardwareInterface"]
+    if len(hardware) != 1:
+        raise ValueError("Expected exactly one real UR hardware interface")
+    parameters = hardware[0].findall("./param[@name='headless_mode']")
+    if len(parameters) != 1:
+        raise ValueError("Expected exactly one UR headless_mode hardware parameter")
+    parameters[0].text = "1" if enabled else "0"
+    return ET.tostring(root, encoding="unicode")
 
 
 def generate_launch_description():
@@ -129,6 +147,10 @@ def generate_launch_description():
             description="Send the control script directly; the real robot must be in Remote Control mode.",
         )
     )
+    return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])
+
+
+def launch_setup(context):
     # Initialize Arguments
     ur_type = LaunchConfiguration("ur_type")
     robot_ip = LaunchConfiguration("robot_ip")
@@ -225,7 +247,15 @@ def generate_launch_description():
             " ",
         ]
     )
-    robot_description = {"robot_description": robot_description_content}
+    # The site's Foxy ur.ros2_control.xacro hardcodes headless_mode=0 and
+    # ur.urdf.xacro does not forward the launch argument. Patch only the UR
+    # hardware parameter after expansion; do not edit the system ROS package.
+    expanded_description = configure_headless_mode(
+        robot_description_content.perform(context),
+        headless_mode.perform(context).lower() == "true",
+        use_fake_hardware.perform(context).lower() == "true",
+    )
+    robot_description = {"robot_description": expanded_description}
 
     robot_controllers = PathJoinSubstitution(
         [FindPackageShare(runtime_config_package), "config", controllers_file]
@@ -340,4 +370,4 @@ def generate_launch_description():
         robot_controller_spawner,
     ]
 
-    return LaunchDescription(declared_arguments + nodes_to_start)
+    return nodes_to_start
