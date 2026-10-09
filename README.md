@@ -97,7 +97,7 @@ Do not use the original historical launch commands as the field procedure.
 
 Use `./scripts/project gripper` to start the request endpoint without actuating the device.
 Enable commands explicitly as described in [operation.md](docs/operation.md).
-Robotiq 2F-85 uses serial Modbus RTU. Serial settings are configured in `lab.yaml`.
+Robotiq 2F-85 uses the pinned official [Robotiq C++ SDK](https://github.com/robotiq/grippers) over serial Modbus RTU. The SDK and its serial transport source are included; build with `./scripts/project build`. Serial settings are configured in `lab.yaml`.
 See [robotiq_serial.md](docs/robotiq_serial.md) for units, read-only status, and explicit activation.
 
 ### End-effector Visualisation

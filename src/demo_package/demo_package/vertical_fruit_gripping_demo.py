@@ -66,7 +66,7 @@ class DemoRoutine(RoutineBase):
                 self.send_movement_request(pick_position)
 
                 self.get_logger().info("Gripping apple")
-                self.send_gripper_request(self.gripper_close_width)  # Close gripper # 78mm is used as 0mm would trigger a safety fault
+                self.send_gripper_request(self.gripper_close_width)  # Close Robotiq gripper
 
                 time.sleep(self.grip_seconds)
 

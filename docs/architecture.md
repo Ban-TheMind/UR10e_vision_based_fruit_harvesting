@@ -5,7 +5,8 @@
 - `ur10e_moveit_config_official`：当前使用的规划配置（基于上游并有本地改动）。
 - `ur10e_moveit_config`：保留的 Setup Assistant 配置；不在默认启动链路中。
 - `camera`：图像同步、目标检测、三维定位、可视化。
-- `gripper`：Robotiq 2F-85 串口 Modbus RTU；端口、从站和超时由参数提供。
+- `gripper`：ROS 2 夹爪服务，校验请求并调用官方 SDK 适配器。
+- `robotiq_sdk_bridge`：固定版本的 Robotiq 官方 C++ SDK 与命令适配程序，负责串口 Modbus RTU；端口、从站和超时由节点参数提供。
 - `moveit_path_planner`：规划场景和运动请求；规划与执行结果分别处理。
 - `custom_interface`：模块间 ROS 请求定义。
 - `demo_package`：采摘策略和共用请求处理；不直接连接设备。

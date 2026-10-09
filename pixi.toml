@@ -30,6 +30,3 @@ scripts = ["scripts/activate_workspace.sh"]
 [tasks]
 build = "colcon build --cmake-args -DPython3_FIND_VIRTUALENV=ONLY -DPython_FIND_VIRTUALENV=ONLY"
 packages = "ros2 pkg list"
-
-[pypi-dependencies]
-pyserial = "==3.5"

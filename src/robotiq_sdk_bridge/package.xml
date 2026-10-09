@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robotiq_sdk_bridge</name>
+  <version>0.1.0</version>
+  <description>Single-request CLI adapter for the official Robotiq grippers SDK.</description>
+  <maintainer email="1105564900@qq.com">Ban-TheMind</maintainer>
+  <license>BSD-3-Clause</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

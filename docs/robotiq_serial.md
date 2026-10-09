@@ -1,44 +1,66 @@
-# Robotiq 2F-85 serial control
+# Robotiq 2F-85: official SDK through ROS 2 services
 
-The laboratory gripper is Robotiq 2F-85, controlled over RS-485 Modbus RTU via a USB adapter. The previous OnRobot RG2/Eye Box HTTP calls do not control this device.
+## Dependency and execution chain
 
-Recorded field settings: `/dev/ttyUSB0`, 115200 baud, 8 data bits, no parity, 1 stop bit, slave address 9. Confirm the adapter path on each computer; a stable `/dev/serial/by-id/...` path is preferable. No node opens or activates a device at startup. Only one controller should use the serial port at a time. On Linux, the driver requests exclusive access; the operator needs serial-device permissions (usually the `dialout` group).
+The device driver is now the official [Robotiq C++ SDK](https://github.com/robotiq/grippers), version 1.1.0 at commit `9017b5707cb28a8ea21fd7c4e84a50f7c56aaa5d`. The unmodified SDK source and BSD-3-Clause license are in `src/robotiq_sdk_bridge/vendor/robotiq`. Its libserialport 0.1.2 dependency is included as an unmodified source release with a checked SHA256 and LGPL license/source. No network or manual library installation is required during builds.
 
-## Dependencies and configuration
+This is not the community `castetsb/pyRobotiqGripper` Python library previously used in the reference project. The custom RTU packing/CRC/serial implementation has been removed.
 
-Foxy/system ROS: install `python3-serial` in the Python environment used by ROS (or `pyserial` in an existing virtual environment). The Humble Pixi environment includes `pyserial`; update it with `./scripts/pixi install --frozen` and rebuild the workspace. No `pymodbus` dependency is needed.
+```
+ROS client -> /gripper_cmd or /reset_gripper_cmd
+  -> gripper_server.py (permission and input checks)
+  -> robotiq_sdk.py (bounded subprocess call)
+  -> robotiq_sdk_command (project policy adapter)
+  -> official Robotiq::GripperModbusClient -> official serial transport -> device
+```
 
-Parameters on `gripper_server`: `serial_port`, `baudrate`, `slave_id`, `serial_timeout` (seconds), `action_timeout` (seconds), `speed` (raw 0..255). Humble configures these in `src/harvesting_bringup/config/lab.yaml`; Foxy can override them with ROS parameters. Preserve the branch-specific command enable switch: `commands_enabled` on Humble and `allow_gripper_commands` on Foxy, both default false.
+We deliberately use the SDK's supported transaction API rather than its continuously exchanging Gripper class: each service request is bounded, and the status diagnostic must perform only a read without writing any command/activation registers. Project code selects commands and waits for completion; the official SDK owns register serialization, RTU framing, CRC, response validation, and serial transport. This is a synchronous service integration, not the official ros2_control/action stack. The helper owns and closes the connection per operation; constructing the Python adapter or starting the ROS node does not connect or activate anything.
+
+Recorded field settings: `/dev/ttyUSB0`, 115200, 8N1, slave 9. Confirm the port on each computer; a stable `/dev/serial/by-id/...` path is preferable. Only one program should control the port. Serial access requires device permissions (usually the `dialout` group). There is no automatic scanning, activation or retry, and no host latency/sysfs modification.
+
+## Build and startup
+
+On this Ubuntu Humble workstation:
+
+```bash
+./scripts/pixi install --frozen
+./scripts/project build
+./scripts/project check
+./scripts/project gripper
+```
+
+On a system ROS workspace, use its ROS environment and build `colcon build --packages-up-to gripper`, then source `install/setup.bash`. The bridge needs a C/C++17 compiler, CMake >=3.16 and make; it builds the pinned transport dependency itself. No pyserial/minimalmodbus/pymodbus installation is needed for this backend. This change is on `main`; it does not automatically modify the separate Foxy branch or another computer.
+
+Parameters on `gripper_server`: `serial_port`, `baudrate`, `slave_id`, `serial_timeout` (0.001..3600 seconds), `action_timeout` (seconds), `speed` (raw 0..255). Set these in `src/harvesting_bringup/config/lab.yaml`. `commands_enabled` remains false by default and is set by launch's `motion_enabled` switch.
 
 ## Service units and completion
 
-`GripperCmd.width`: nominal opening in millimetres, 0..85; 85 means fully open and 0 fully closed. The mapping to raw position 0..255 is a nominal linear conversion, not a calibrated measurement of actual finger spacing. Fingertips and installation affect intermediate gaps; verify them on site.
+`GripperCmd.width`: nominal opening in mm, 0..85; 85=open, 0=closed. The linear raw-position conversion is not a calibrated finger-gap measurement; verify real fingertips and intermediate openings on site.
 
-`GripperCmd.force`: raw Robotiq register value 0..255, **not newtons**. The client default 40 now means raw 40. `speed` is also raw 0..255 (default 64). Force is not an absolute calibrated force or a fruit-safe setting; choose it in supervised field tests. Raw force 0 still commands the device's minimum force.
+`GripperCmd.force`: raw 0..255, NOT newtons; default 40 means raw 40. Speed defaults to raw 64. These values are not certified fruit-safe; raw force 0 means the device's minimum force.
 
-The driver reads status with FC04 starting at 0x07D0 and writes three command registers with FC16 starting at 0x03E8. CRC, slave, function, response length and write acknowledgement are checked. Motion returns success only after readiness, command-position echo, and terminal object status. Closing contact is reported as a completed grip; reaching the requested position does not prove an object was grasped. Opening contact returns failure. Faults, incomplete replies and timeouts return failure. A timeout does not guarantee that physical motion stopped: stop the task and inspect the device before retrying.
+The pinned SDK uses FC03 to read status and FC16 to write commands. The previous self-written driver used FC04 for status reads. The SDK/installed-firmware combination must therefore be verified first with the read-only status command on the real device; prior successful FC04 communication does not prove this new backend works.
 
-`ResetGripperCmd(reset_gripper=true)` explicitly clears and sets activation and waits for activation status. This is **not** the old tool-power reset, nor a robot homing command. Activation can move the fingers during device calibration. Ordinary move requests never automatically activate an unready gripper.
+Move requests check readiness before writing and wait for matching target echo, readiness, go-to flag and terminal object status. Closing contact or reaching target returns success, but neither guarantees reliable grasping. Opening contact is an error. Fault/transport failure/timeout returns failure. A timeout or stopping the helper does not guarantee physical motion stopped; inspect before retrying.
 
-## Read-only first check
+`ResetGripperCmd(reset_gripper=true)` explicitly clears activation, waits for reset, sets activation and waits for fault-free readiness. Device firmware performs calibration, possibly moving fingers. It is not tool-power reset or robot homing. Normal move requests never automatically activate an unready device.
 
-After building and sourcing the workspace, with no other serial controller running:
+## Read-only field check
+
+After building, with no other controller using the port:
 
 ```bash
-ros2 run gripper gripper_status --port /dev/ttyUSB0
+./scripts/pixi run --frozen ros2 run gripper gripper_status --port /dev/ttyUSB0
 ```
 
-This sends only a status read; it never writes activation or motion registers. A successful status read verifies communication, not physical grasping.
-
-Keep actuation disabled until supervised testing. Then explicitly enable the branch's command switch, activate through the reset service if required, and test a chosen opening/force. The existing tool meshes and collision model have not been replaced or validated for the Robotiq installation; verify actual geometry and TCP before planning near objects. Automatic harvesting and calibration remain subject to the existing branch safeguards.
+This issues one SDK status read and no activation/motion writes. A successful read verifies communication, not grasping. Keep actuator commands disabled until supervised field testing. Tool geometry, TCP, calibration and robot poses still need separate verification.
 
 ## Offline verification
 
 ```bash
-python3 -m unittest discover -s src/gripper/test -p 'test_*safety.py'
-python3 -m unittest discover -s src/gripper/test -p 'test_robotiq_rtu.py'
+./scripts/pixi run --frozen python -m unittest discover -s src/gripper/test -p 'test_*safety.py'
+./scripts/pixi run --frozen python -m unittest discover -s src/gripper/test -p 'test_robotiq_sdk.py'
+./scripts/pixi run --frozen ctest --test-dir build/robotiq_sdk_bridge --output-on-failure
 ```
 
-Tests use simulated serial replies and do not access hardware. Actual serial wiring, installed firmware, calibration and physical motion still require field verification.
-
-Protocol reference: [Robotiq official control manual](https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_TM-OMRON_InstructionManual_HTML5_20190118.zip/2F-85_2F-140_TM-OMRON_InstructionManual_HTML5/Content/4.%20Control.htm).
+Python tests verify the service guards and SDK process boundary. Native tests link the actual official SDK with a simulated serial fixture (construction sends nothing, status sends only a read, corrupt replies fail), and test project completion/fault/activation policies without devices. Hardware motion has not been tested on this workstation.

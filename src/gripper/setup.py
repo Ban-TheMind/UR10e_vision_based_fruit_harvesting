@@ -19,7 +19,7 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
-            'gripper_status = gripper.robotiq_rtu:main',
+            'gripper_status = gripper.robotiq_sdk:main',
             'gripper_server = gripper.gripper_server:main',
 			'gripper_client = gripper.gripper_client:main',
         ],

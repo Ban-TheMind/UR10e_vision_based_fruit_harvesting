@@ -40,6 +40,7 @@ def validate_profile(config):
     if (not gripper['serial_port'] or gripper['baudrate'] <= 0
             or not 1 <= gripper['slave_id'] <= 247
             or not 0 <= gripper['speed'] <= 255
+            or not 0.001 <= gripper['serial_timeout'] <= 3600
             or not all(math.isfinite(gripper[key]) and gripper[key] > 0
                        for key in ('serial_timeout', 'action_timeout'))):
         raise ValueError('Invalid gripper configuration')
@@ -80,10 +81,17 @@ def main():
         for file in (root / 'src').rglob('package.xml'):
             ET.parse(file)
     check('source syntax / package manifests', sources)
-    for name in ('rclpy', 'cv_bridge', 'pyrealsense2', 'tf2_geometry_msgs', 'tf_transformations', 'message_filters', 'serial'):
+    for name in ('rclpy', 'cv_bridge', 'pyrealsense2', 'tf2_geometry_msgs', 'tf_transformations', 'message_filters'):
         check(f'import {name}', lambda name=name: importlib.import_module(name))
-    for name in ('harvesting_bringup', 'camera', 'gripper', 'demo_package', 'moveit_path_planner', 'ur_robot_driver', 'ur10e_moveit_config_official', 'realsense2_camera'):
+    for name in ('harvesting_bringup', 'camera', 'gripper', 'robotiq_sdk_bridge', 'demo_package', 'moveit_path_planner', 'ur_robot_driver', 'ur10e_moveit_config_official', 'realsense2_camera'):
         check(f'installed package {name}', lambda name=name: get_package_share_directory(name))
+    def sdk_binary():
+        from ament_index_python.packages import get_package_prefix
+        import os
+        binary = Path(get_package_prefix('robotiq_sdk_bridge')) / 'lib/robotiq_sdk_bridge/robotiq_sdk_command'
+        if not os.access(binary, os.X_OK):
+            raise ValueError('Official Robotiq SDK bridge missing; rebuild workspace')
+    check('official Robotiq SDK executable (no device access)', sdk_binary)
     def model_file():
         model = Path(config['camera_server']['ros__parameters']['model_file'])
         if not model.is_absolute():
