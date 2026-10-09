@@ -67,6 +67,7 @@ print('PASS RealSense Foxy launch arguments')
 PY
 
 cd "$repo_dir"
+python3 -c 'import serial; print("PASS pyserial dependency")'
 python3 tools/offline_preflight.py
 
 if [[ "${1:-}" == --build ]]; then

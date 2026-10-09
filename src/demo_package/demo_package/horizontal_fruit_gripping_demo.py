@@ -156,7 +156,7 @@ class DemoRoutine(Node):
                 break
 
             self.get_logger().info("gripper init")
-            self.send_gripper_request(100)  # Open gripper
+            self.send_gripper_request(85)  # Open gripper
 
             # 3. Process each detected apple
             for apple in filtered_pos_array:
@@ -180,7 +180,7 @@ class DemoRoutine(Node):
                 
                 # 3.3 Grip the apple
                 self.get_logger().info("Gripping apple")
-                self.send_gripper_request(0)  # Close gripper # 78mm is used as 0mm would trigger a safety fault
+                self.send_gripper_request(0)  # Close gripper
                 
                 time.sleep(0.5)
                 
@@ -201,7 +201,7 @@ class DemoRoutine(Node):
                 
                 # 3.6 Release the apple
                 self.get_logger().info("Releasing apple")
-                self.send_gripper_request(100)  # Open gripper
+                self.send_gripper_request(85)  # Open gripper
                                 
             # After processing all apples, loop will repeat detection
         

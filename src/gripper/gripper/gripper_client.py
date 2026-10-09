@@ -40,7 +40,7 @@ def main(args=None):
     try:
         while True:
             # Get user input
-            user_input = input("Enter width and force (default 40N) separated by space, or 'reset' for resetting the gripper: ").strip()
+            user_input = input("Enter width_mm (0..85) and force_raw (0..255, default 40) separated by space, or 'reset' for resetting the gripper: ").strip()
             response = ''
 
             if not user_input:

@@ -1,5 +1,5 @@
-int32 width
-int32 force
+int32 width # Nominal opening in mm, 0..85; 85=open, 0=closed
+int32 force # Robotiq raw force register, 0..255; NOT newtons
 ---
 bool success
 string message

@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-			'gripper_server = gripper.gripper_server:main',
+			'gripper_status = gripper.robotiq_rtu:main',
+            'gripper_server = gripper.gripper_server:main',
 			'gripper_client = gripper.gripper_client:main',
         ],
     },

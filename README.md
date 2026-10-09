@@ -4,8 +4,8 @@
 **Supervisor**: Dr. Leo Wu
 
 **Robot**: UR10e  
-**End-effector setup**: OnRobot RG2 V2 + Quick Changer (QC)  
-**Depth Camera**: OnRobot Eye System (Intel Realsense 415 Depth Camera)  
+**Laboratory gripper**: Robotiq 2F-85, serial Modbus RTU
+**Depth Camera**: Intel RealSense (see laboratory configuration)
 **Dev Env**: `Ubuntu 22.04`  
 **Dev tools**: `MoveIt!`, `ROS2 Humble`, `YOLOv11`, `hand-eye calibration`  
 
@@ -167,3 +167,11 @@ In another terminal: `ros2 run gripper gripper_client`
 ### End-effector Visualisation
 
 ![](img/end_effector_visualisation.png)
+
+## Laboratory serial gripper
+
+Robotiq 2F-85 uses `/dev/ttyUSB0`, 115200/8N1, slave 9.
+Install `python3-serial` (or `pyserial` in the active ROS Python environment) and rebuild.
+Width is nominal 0..85 mm; force is raw 0..255, not N.
+Commands remain disabled unless `allow_gripper_commands` is explicitly enabled.
+Read [robotiq_serial.md](docs/robotiq_serial.md) before activation or field tests.
