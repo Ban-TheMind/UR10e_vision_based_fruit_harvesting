@@ -41,7 +41,11 @@ Parameters on `gripper_server`: `serial_port`, `baudrate`, `slave_id`, `serial_t
 
 The pinned SDK uses FC03 to read status and FC16 to write commands. The previous self-written driver used FC04 for status reads. The SDK/installed-firmware combination must therefore be verified first with the read-only status command on the real device; prior successful FC04 communication does not prove this new backend works.
 
-Move requests check readiness before writing and wait for matching target echo, readiness, go-to flag and terminal object status. Closing contact or reaching target returns success, but neither guarantees reliable grasping. Opening contact is an error. Fault/transport failure/timeout returns failure. A timeout or stopping the helper does not guarantee physical motion stopped; inspect before retrying.
+Move requests check readiness before writing and wait for matching target echo, readiness, go-to flag and terminal object status.
+
+An idle device may report communication timeout `0x09` on the first successful status read. Before sending a move, the bridge polls status only at 50 ms intervals for this code, within a budget of `min(action_timeout, 0.5)` seconds and at most 10 additional reads. A blocking SDK read is bounded separately by `serial_timeout` and can extend the elapsed polling budget. Motion is sent only after the fault clears and activation is complete; a persistent timeout, any other fault, or a transport error fails without sending a command. This recovery never resets/activates the device, and it never retries a motion command or suppresses faults after a command is sent.
+
+Closing contact or reaching target returns success, but neither guarantees reliable grasping. Opening contact is an error. Fault/transport failure/timeout returns failure. A timeout or stopping the helper does not guarantee physical motion stopped; inspect before retrying.
 
 `ResetGripperCmd(reset_gripper=true)` explicitly clears activation, waits for reset, sets activation and waits for fault-free readiness. Device firmware performs calibration, possibly moving fingers. It is not tool-power reset or robot homing. Normal move requests never automatically activate an unready device.
 

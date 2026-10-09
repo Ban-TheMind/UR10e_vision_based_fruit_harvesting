@@ -1,6 +1,7 @@
 #pragma once
 #include <Robotiq/gripper/command.hpp>
 #include <Robotiq/gripper/status.hpp>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
@@ -35,14 +36,38 @@ GripperStatus wait(Client& client, Predicate predicate, double timeout, bool act
   }
   throw std::runtime_error("Gripper action timed out; physical state unknown");
 }
+// Recover only an idle communication timeout, before writing any command.
+// Bound both the polling time and read count; transport errors propagate immediately.
+template<class Client>
+GripperStatus statusBeforeMove(Client& client, double timeout) {
+  using Clock = std::chrono::steady_clock;
+  const auto budget = std::chrono::duration_cast<Clock::duration>(
+    std::chrono::duration<double>(std::min(timeout, 0.5)));
+  const auto deadline = Clock::now() + budget;
+  auto initial = client.readStatus();
+  int retries = 0;
+  while (initial.faultStatus.gripperFault() == Robotiq::GripperFault::NoCommunication) {
+    if (retries >= 10 || Clock::now() >= deadline)
+      throw std::runtime_error("Gripper communication timeout (fault code 9) did not clear before motion; no command sent");
+    std::this_thread::sleep_until(std::min(deadline, Clock::now() + std::chrono::milliseconds(50)));
+    if (Clock::now() >= deadline)
+      throw std::runtime_error("Gripper communication timeout (fault code 9) did not clear before motion; no command sent");
+    initial = client.readStatus();
+    ++retries;
+  }
+  if (fault(initial))
+    throw std::runtime_error("Gripper fault code " + std::to_string(fault(initial)) +
+                             " before motion; no command sent");
+  if (!ready(initial))
+    throw std::runtime_error("Gripper not activated/ready; explicit reset/activation required; no command sent");
+  return initial;
+}
 template<class Client>
 GripperStatus move(Client& client, double width, int force, int speed, double timeout) {
   const auto target = positionForWidth(width);
   if (force < 0 || force > 255 || speed < 0 || speed > 255)
     throw std::invalid_argument("force and speed must be raw 0..255 values");
-  auto initial = client.readStatus();
-  if (fault(initial) || !ready(initial))
-    throw std::runtime_error("Gripper not ready; explicit reset/activation required");
+  (void)statusBeforeMove(client, timeout);
   Robotiq::GripperCommand command{};
   command.action.set(Robotiq::ActionRequestBit::Activate);
   command.action.set(Robotiq::ActionRequestBit::GoTo);
