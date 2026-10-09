@@ -308,7 +308,7 @@ private:
 
   bool plan_and_maybe_execute(bool execute_request) {
     moveit::planning_interface::MoveGroupInterface::Plan plan;
-    if (move_group_->plan(plan) != moveit::core::MoveItErrorCode::SUCCESS) {
+    if (!move_group_->plan(plan)) {
         RCLCPP_ERROR(node_->get_logger(), "Planning failed; no trajectory was executed");
         return false;
     }
@@ -319,7 +319,7 @@ private:
     }
 
     const auto execution_result = move_group_->execute(plan);
-    if (execution_result != moveit::core::MoveItErrorCode::SUCCESS) {
+    if (!execution_result) {
         RCLCPP_ERROR(node_->get_logger(), "Trajectory execution failed");
         return false;
     }
