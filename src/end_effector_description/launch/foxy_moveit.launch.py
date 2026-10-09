@@ -19,7 +19,7 @@ import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -137,6 +137,10 @@ def generate_launch_description():
             description="Trajectory controller started by the UR control launch. Use scaled_joint_trajectory_controller for the real robot.",
         )
     )
+    return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])
+
+
+def launch_setup(context):
     # Initialize Arguments
     ur_type = LaunchConfiguration("ur_type")
     robot_ip = LaunchConfiguration("robot_ip")
@@ -274,7 +278,7 @@ def generate_launch_description():
     controllers_yaml["scaled_joint_trajectory_controller"] = dict(
         controllers_yaml["joint_trajectory_controller"]
     )
-    controllers_yaml["controller_names"] = [LaunchConfiguration("robot_controller")]
+    controllers_yaml["controller_names"] = [LaunchConfiguration("robot_controller").perform(context)]
     moveit_controllers = {
         "moveit_simple_controller_manager": controllers_yaml,
         "moveit_controller_manager": "moveit_simple_controller_manager/MoveItSimpleControllerManager",
@@ -353,4 +357,4 @@ def generate_launch_description():
         static_tf,
     ]
 
-    return LaunchDescription(declared_arguments + nodes_to_start)
+    return nodes_to_start
