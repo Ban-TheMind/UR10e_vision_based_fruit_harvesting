@@ -122,6 +122,13 @@ def generate_launch_description():
         DeclareLaunchArgument("launch_rviz", default_value="true", description="Launch RViz?")
     )
 
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "headless_mode",
+            default_value="false",
+            description="Send the control script directly; the real robot must be in Remote Control mode.",
+        )
+    )
     # Initialize Arguments
     ur_type = LaunchConfiguration("ur_type")
     robot_ip = LaunchConfiguration("robot_ip")
@@ -136,6 +143,7 @@ def generate_launch_description():
     prefix = LaunchConfiguration("prefix")
     use_fake_hardware = LaunchConfiguration("use_fake_hardware")
     fake_sensor_commands = LaunchConfiguration("fake_sensor_commands")
+    headless_mode = LaunchConfiguration("headless_mode")
     robot_controller = LaunchConfiguration("robot_controller")
     launch_rviz = LaunchConfiguration("launch_rviz")
 
@@ -208,6 +216,9 @@ def generate_launch_description():
             " ",
             "use_fake_hardware:=",
             use_fake_hardware,
+            " ",
+            "headless_mode:=",
+            headless_mode,
             " ",
             "fake_sensor_commands:=",
             fake_sensor_commands,
