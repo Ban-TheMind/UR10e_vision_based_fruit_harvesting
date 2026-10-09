@@ -130,6 +130,13 @@ def generate_launch_description():
         DeclareLaunchArgument("launch_rviz", default_value="true", description="Launch RViz?")
     )
 
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "robot_controller",
+            default_value="joint_trajectory_controller",
+            description="Trajectory controller started by the UR control launch. Use scaled_joint_trajectory_controller for the real robot.",
+        )
+    )
     # Initialize Arguments
     ur_type = LaunchConfiguration("ur_type")
     robot_ip = LaunchConfiguration("robot_ip")
@@ -262,6 +269,12 @@ def generate_launch_description():
 
     # Trajectory Execution Configuration
     controllers_yaml = load_yaml("ur_moveit_config", "config/controllers.yaml")
+    # Both controllers expose the same joint trajectory action; select the
+    # controller actually started by foxy_ur_control.launch.py.
+    controllers_yaml["scaled_joint_trajectory_controller"] = dict(
+        controllers_yaml["joint_trajectory_controller"]
+    )
+    controllers_yaml["controller_names"] = [LaunchConfiguration("robot_controller")]
     moveit_controllers = {
         "moveit_simple_controller_manager": controllers_yaml,
         "moveit_controller_manager": "moveit_simple_controller_manager/MoveItSimpleControllerManager",
