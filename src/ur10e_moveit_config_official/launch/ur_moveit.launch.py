@@ -65,14 +65,12 @@ def launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration("use_sim_time")
     launch_rviz = LaunchConfiguration("launch_rviz")
     launch_servo = LaunchConfiguration("launch_servo")
+    camera_mount = LaunchConfiguration("camera_mount")
 
     joint_limit_params = PathJoinSubstitution(
         [FindPackageShare(description_package), "config", ur_type, "joint_limits.yaml"]
     )
-    kinematics_params = PathJoinSubstitution(
-        # [FindPackageShare(description_package), "config", ur_type, "default_kinematics.yaml"]
-        [FindPackageShare("end_effector_description"), "etc", "robot_calibration.yaml"]
-    )
+    kinematics_params = LaunchConfiguration("kinematics_params_file")
     physical_params = PathJoinSubstitution(
         [FindPackageShare(description_package), "config", ur_type, "physical_parameters.yaml"]
     )
@@ -86,6 +84,7 @@ def launch_setup(context, *args, **kwargs):
             " ",
             PathJoinSubstitution([FindPackageShare(description_package), "urdf", description_file]),
             " ",
+            "camera_mount:=", camera_mount, " ",
             "robot_ip:=xxx.yyy.zzz.www",
             " ",
             "joint_limit_params:=",
@@ -178,7 +177,7 @@ def launch_setup(context, *args, **kwargs):
     # Trajectory Execution Configuration
     controllers_yaml = load_yaml("ur10e_moveit_config_official", "config/controllers.yaml")
     # the scaled_joint_trajectory_controller does not work on fake hardware
-    change_controllers = context.perform_substitution(use_sim_time)
+    change_controllers = context.perform_substitution(LaunchConfiguration("use_fake_hardware"))
     if change_controllers == "true":
         controllers_yaml["scaled_joint_trajectory_controller"]["default"] = False
         controllers_yaml["joint_trajectory_controller"]["default"] = True
@@ -386,9 +385,12 @@ def generate_launch_description():
             "have to be updated.",
         )
     )
-    declared_arguments.append(
+    declared_arguments.append(DeclareLaunchArgument("use_fake_hardware", default_value="false"))
+    declared_arguments.extend([
+        DeclareLaunchArgument("camera_mount", default_value="external"),
+        DeclareLaunchArgument("kinematics_params_file", default_value=PathJoinSubstitution([FindPackageShare("end_effector_description"), "etc", "robot_calibration.yaml"])),
         DeclareLaunchArgument("launch_rviz", default_value="true", description="Launch RViz?")
-    )
+    ])
     declared_arguments.append(
         DeclareLaunchArgument("launch_servo", default_value="true", description="Launch Servo?")
     )

@@ -12,21 +12,22 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'calibration'), glob('camera/calibration/*.json')),
         # Install launch files
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         # Add this line to install the models folder
         (os.path.join('share', package_name, 'models'), glob('models/*.pt')),
     ],
+    package_data={'camera': ['calibration/*.json']},
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='davidnie',
     maintainer_email='davidnie0418@gmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'camera_server = camera.camera_server:main',
+            'camera_server = camera.camera_node:main',
             'camera_client = camera.camera_client:main',
             'camera_node = camera.camera_node:main',
         ],

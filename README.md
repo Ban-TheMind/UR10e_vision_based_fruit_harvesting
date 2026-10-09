@@ -4,8 +4,8 @@
 **Supervisor**: Dr. Leo Wu
 
 **Robot**: UR10e  
-**End-effector setup**: OnRobot RG2 V2 + Quick Changer (QC)  
-**Depth Camera**: OnRobot Eye System (Intel Realsense 415 Depth Camera)  
+**Laboratory gripper**: Robotiq 2F-85, USB/RS-485 Modbus RTU (115200/8N1, slave 9)
+**Depth Camera**: Intel RealSense (confirm laboratory device configuration)
 **Dev Env**: `Ubuntu 22.04`  
 **Dev tools**: `MoveIt!`, `ROS2 Humble`, `YOLOv11`, `hand-eye calibration`  
 
@@ -35,78 +35,23 @@
 
 
 ### Workspace setup
-* Camera
-* custom_interface
-  * contains ROS2 `.srv` and `.msg`
-* demo_package
-* end_effector_description
-* gripper
-* moveit_path_planner
-  * define services that move the arm
-* ur10e_moveit_config
-  * created using `moveit_setup_assistant`
-  * uses RRTConnect planner
-* ur10e_moveit_config_official
-  * cloned from `UR_ROS2_DRIVER` package developed by Universal Robotics
-  * uses TRRT planner by default
-    * the planner can be changed via `ompl_planning.yaml` file
 
-### Lab eye-to-hand configuration
-
-The launch file `src/end_effector_description/launch/display.launch.py` selects
-UR10e `192.168.11.60` and RealSense serial `406122071837` (passed to the
-RealSense ROS wrapper as `_406122071837` to preserve its string type).
-
-The camera is fixed outside the robot. `src/camera/camera/tf_utils.py` converts
-aligned color optical-frame points (meters) directly into the UR `base` frame:
-
-```text
-T_base_camera =
-[[-0.14168, -0.28354,  0.94844, -0.12025],
- [-0.98968,  0.019898, -0.14189,  0.41004],
- [ 0.021358, -0.95875, -0.28343,  0.39921],
- [ 0,         0,        0,        1      ]]
-```
-
-The camera is no longer attached to the robot flange in the runtime URDF.
-RViz detection markers are in the UR controller's `base` frame. The camera
-service returns points in MoveIt's `base_link` frame (X and Y negated from
-`base`, because those frames differ by a 180-degree rotation about Z).
-`robot_calibration.yaml` is the UR arm's kinematic calibration, not this
-camera extrinsic calibration. Before executing a demo, verify that this matrix
-was measured for the current camera mount and optical frame, then check a known
-point in the `base` frame. The demo motion poses and offsets still come from the
-original setup and need separate validation on this robot.
-
-### Commissioning tests (no robot motion)
-
-The motion service accepts `plan_cartesian` and `plan_joint` for planning only.
-The existing `cartesian` and `joint` requests are execution requests and are
-rejected unless the motion node is explicitly started with
-`allow_execution:=true`. Cartesian positions are `[x, y, z, roll, pitch, yaw]`
-in meters/radians and are interpreted in `base_link`; joint positions are six
-radians in UR joint order (shoulder pan, shoulder lift, elbow, wrist 1, 2, 3).
-The gripper service similarly rejects hardware commands unless
-`allow_gripper_commands:=true`. The example collision boxes are disabled by
-default because their dimensions and locations describe another workcell.
-
-The following tests use only the local C++ and Python standard libraries; they
-do not start ROS, contact the robot, or contact the gripper:
+本工位使用 Ubuntu 24.04、glibc 2.39 和 Pixi 隔离的 ROS 2 Humble 环境。
+原始研究开发环境为 Ubuntu 22.04；当前锁定依赖要求 glibc 2.39。
 
 ```bash
-g++ -std=c++17 -Wall -Wextra -Werror \
-  -I src/moveit_path_planner/src \
-  src/moveit_path_planner/test/test_movement_request_policy.cpp \
-  -o /tmp/test_movement_request_policy
-/tmp/test_movement_request_policy
-python3 -m unittest src/gripper/test/test_gripper_safety.py
+./scripts/pixi install
+./scripts/project build
+./scripts/project check
+./scripts/project fake
 ```
 
-This workstation currently has Ubuntu 20.04 with ROS 2 Foxy, while this
-repository targets ROS 2 Humble. Keep any Humble build environment separate
-from `/opt/ros/foxy`. Before enabling real execution, validate the actual robot
-kinematics, planning frame, collision scene, speed limits, work envelope, and
-every trajectory with the on-site operator.
+- [工位与实验室操作](docs/operation.md)
+- [模块职责](docs/architecture.md)
+- [真机部署核对清单](docs/field_verification.md)
+
+现场配置入口为 `src/harvesting_bringup/config/lab.yaml`；修改配置无需重新构建。
+`fake` 使用假硬件，不是物理仿真。默认启动不运行自动采摘。
 
 ## Demo videos
 
@@ -126,17 +71,17 @@ every trajectory with the on-site operator.
 
 ## How to run the demos
 
-### Horizontal Pick & Place
-* Switch to `origin/david_hor_variousHeight_backup` branch
-* Build and source the workspace
-* In one terminal, run `ros2 launch end_effector_description display.launch.py`
-* In another terminal, run `ros2 run demo_package horizontal_fruit_gripping_demo`
+Current laboratory entry points:
 
-### Vertical Fruit Harvesting
-* Switch to `main` branch
-* Build and source the workspace
-* In one terminal, run `ros2 launch end_effector_description display.launch.py`
-* In another terminal, run `ros2 run demo_package vertical_fruit_gripping_demo.py`
+```bash
+./scripts/project camera
+./scripts/project robot
+./scripts/project gripper
+```
+
+See [operation.md](docs/operation.md) for explicit actuator enablement and the separate automatic task entry.
+The original horizontal strategy remains as source for comparison; the default field task is vertical harvesting.
+Do not use the original historical launch commands as the field procedure.
 
 ## Depth Camera Visualisation
 
@@ -150,19 +95,10 @@ every trajectory with the on-site operator.
 
 ## How to test Gripper
 
-1. First, connect the Ethernet Cable from Web Client port of the Eye Box 
-2. Then, go to 192.168.1.1 to make sure you are logged in with username: `admin` and password: `OnRobot1`
-3. Now, go to Devices -> RG2 and manually move the `width` bar around, see if it works
-4. Finally, test it in a terminal, `curl "http://192.168.1.1/api/dc/rgxp2/set_width/0/{width}/{force}"`; width=[0,100], force=[3,40]
-
-e.g. 
-	Grip: `curl "http://192.168.1.1/api/dc/rgxp2/set_width/0/0/40"`
-	Release: `curl "http://192.168.1.1/api/dc/rgxp2/set_width/0/100/40"`
-
-If that worked, we are now ready to launch the gripper package
-
-In one terminal: `ros2 run gripper gripper_server`
-In another terminal: `ros2 run gripper gripper_client`
+Use `./scripts/project gripper` to start the request endpoint without actuating the device.
+Enable commands explicitly as described in [operation.md](docs/operation.md).
+Robotiq 2F-85 uses the pinned official [Robotiq C++ SDK](https://github.com/robotiq/grippers) over serial Modbus RTU. The SDK and its serial transport source are included; build with `./scripts/project build`. Serial settings are configured in `lab.yaml`.
+See [robotiq_serial.md](docs/robotiq_serial.md) for units, read-only status, and explicit activation.
 
 ### End-effector Visualisation
 

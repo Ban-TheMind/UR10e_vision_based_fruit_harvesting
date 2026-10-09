@@ -16,7 +16,7 @@
   <depend>custom_interface</depend> 
   <depend>camera</depend>
   <depend>gripper</depend>
-  <depend>moveit_path_planner</depend>w
+  <depend>moveit_path_planner</depend>
 
   <export>
     <build_type>ament_python</build_type>

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+profile="${HARVEST_PROFILE:-$project_dir/src/harvesting_bringup/config/lab.yaml}"
+command="${1:-help}"
+if [[ $# -gt 0 ]]; then shift; fi
+case "$command" in
+  build) exec "$project_dir/scripts/pixi" run --frozen build "$@" ;;
+  check) exec "$project_dir/scripts/pixi" run --frozen python "$project_dir/scripts/check_project.py" "$profile" "$@" ;;
+  fake|robot|camera|gripper|all|demo)
+    "$project_dir/scripts/pixi" run --frozen python "$project_dir/scripts/check_project.py" "$profile" --profile-only
+    exec "$project_dir/scripts/pixi" run --frozen ros2 launch harvesting_bringup system.launch.py "profile:=$profile" "mode:=$command" "$@"
+    ;;
+  record)
+    exec "$project_dir/scripts/pixi" run --frozen python "$project_dir/scripts/record_topics.py" "$profile" "$@"
+    ;;
+  help) cat <<'HELP'
+Usage: scripts/project COMMAND [ROS launch arguments]
+  build     Build the workspace
+  check     Read-only environment, profile and model checks; no devices contacted
+  fake      UR driver fake hardware + MoveIt (no physical simulation)
+  robot     Real UR driver + MoveIt; planning module defaults to plan-only
+  camera    RealSense + perception, no robot driver or gripper
+  gripper   RG2 request endpoint; commands disabled by default
+  all       Robot, camera and gripper endpoints; no automatic routine
+  demo      Vertical harvesting; requires verified calibration and motion_enabled:=true
+  record    Record images, aligned depth, camera intrinsics, TF and joints
+Use motion_enabled:=true to enable actuator requests (not needed for sensor tests).
+Use rviz:=false for headless robot/fake launch.
+HARVEST_PROFILE=/absolute/path/to/profile.yaml overrides the source profile.
+HELP
+    ;;
+  *) echo "Unknown command: $command" >&2; exit 2 ;;
+esac

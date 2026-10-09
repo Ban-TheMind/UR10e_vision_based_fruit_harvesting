@@ -1,0 +1,79 @@
+# Source-of-truth laboratory profile. Loaded at launch: no rebuild after edits.
+# Addresses and poses are inherited from the previous project, not field verified.
+deployment:
+  robot_ip: "192.168.11.60"
+  camera_serial: "_406122071837"
+  robot_calibration_file: ""  # empty = packaged robot_calibration.yaml
+  calibration_verified: false
+  camera_mount: "external"  # laboratory camera is fixed outside the arm
+  camera_publish_tf: true   # false when static calibration targets optical frame
+  # Optional Camera -> Base static TF, for visualization; point conversion uses the same matrix directly.
+  publish_camera_tf: false
+  camera_source_frame: ""    # confirm optical frame at the laboratory
+  camera_target_frame: ""    # confirm MoveIt target frame at the laboratory
+  camera_calibration_file: "" # empty = packaged camera calibration
+
+camera_server:
+  ros__parameters:
+    model_file: "best.pt"     # filename in camera/models, or absolute path
+    color_topic: "/camera/camera/color/image_raw"
+    depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
+    camera_info_topic: "/camera/camera/aligned_depth_to_color/camera_info"
+    show_image: true
+    coordinate_mode: "eye_to_hand" # optical XYZ -> calibrated UR base -> base_link
+    camera_frame: "camera_color_optical_frame"
+    target_frame: "base_link"
+    calibration_file: "" # empty = packaged camera/calibration/camera_to_base.json
+
+gripper_server:
+  ros__parameters:
+    serial_port: "/dev/ttyUSB0"
+    baudrate: 115200
+    slave_id: 9
+    serial_timeout: 0.5
+    action_timeout: 10.0
+    speed: 64 # Robotiq raw speed, 0..255
+
+moveit_path_planning_server:
+  ros__parameters:
+    planning_group: "ur_manipulator"
+    planner_id: "TRRTkConfigDefault"
+    planning_time: 20.0
+    max_planning_attempts: 3
+    velocity_scaling: 0.1
+    acceleration_scaling: 0.1
+    # Preserve original joint-request order so existing routines still work.
+    joint_names: [shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, shoulder_pan_joint]
+    pose_reference_frame: "base_link"
+    scene_frame: "world"
+    back_wall: [2.4, 0.04, 3.0, 0.70, -0.60, 0.5]
+    side_wall: [0.04, 2.4, 3.0, -0.55, 0.25, 0.8]
+    table: [3.0, 3.0, 0.01, 0.85, 0.25, 0.05]
+    ceiling: [2.4, 2.4, 0.04, 0.85, 0.25, 1.5]
+
+demo_routine:
+  ros__parameters:
+    service_timeout: 120.0
+    startup_timeout: 30.0
+    calibration_verified: false
+    motion_enabled: false
+    max_cycles: 1
+    max_attempts: 3
+    max_detect_attempts: 20
+    detection_class: 0
+    detection_confidence: 0.5
+    detection_min_confidence: 0.2
+    gripper_open_width: 85
+    gripper_close_width: 0
+    gripper_force: 40 # Robotiq raw force, NOT newtons
+    bird_eye_position: [0.54, 0.174, 0.9, -1.56, 0.0, -1.571]
+    birds_eye_joint_pos: [-1.9, 1.2, -2.0, -1.57, 0.0, 0.0]
+    drop_position: [0.822, 0.583, 0.556, 0.0, 3.14, 0.0]
+    approach_offset: [-0.5, 0.0, -0.1]
+    pick_offset: [-0.18, 0.06, -0.03]
+    pick_orientation: [-1.56, 0.0, -1.571]
+    retry_scan_delta: [0.0, -0.08, 0.15, -0.3, 0.0, 0.0]
+    retry_grip_delta: [0.0, 0.05, -0.03, 0.0, 0.0, 0.0]
+    distance_tolerance: 0.06
+    settle_seconds: 1.5
+    grip_seconds: 2.0

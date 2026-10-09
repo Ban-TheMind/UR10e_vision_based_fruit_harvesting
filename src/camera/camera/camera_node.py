@@ -1,13 +1,12 @@
-import threading
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+from rclpy.qos import qos_profile_sensor_data
 from custom_interface.srv import CameraSrv
 from .detection_utils import DetectionHandler
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from sensor_msgs.msg import Image
-import pyrealsense2 as rs
 from .tf_utils import TFHandler
 from .visualisation import VisualisationHandler
 
@@ -15,8 +14,20 @@ class CameraServer(Node):
     def __init__(self):
         super().__init__('camera_server')
         
+        for name, value in {
+            'model_file': 'best.pt', 'color_topic': '/camera/camera/color/image_raw',
+            'depth_topic': '/camera/camera/aligned_depth_to_color/image_raw',
+            'camera_info_topic': '/camera/camera/aligned_depth_to_color/camera_info',
+            'show_image': True, 'coordinate_mode': 'eye_to_hand', 'camera_frame': 'camera_color_optical_frame',
+            'target_frame': 'base_link', 'calibration_file': '',
+        }.items():
+            self.declare_parameter(name, value)
+        if self.get_parameter('coordinate_mode').value != 'eye_to_hand':
+            raise ValueError('coordinate_mode must be eye_to_hand for the fixed laboratory camera')
+        if self.get_parameter('target_frame').value != 'base_link':
+            raise ValueError('Eye-to-hand detections must be returned in base_link')
         # Setup callback groups
-        self.service_group = ReentrantCallbackGroup()
+        self.service_group = MutuallyExclusiveCallbackGroup()
         self.image_group = ReentrantCallbackGroup()
 
         # Setup components
@@ -51,14 +62,14 @@ class CameraServer(Node):
         self.color_sub = Subscriber(
             self, 
             Image, 
-            '/camera/camera/color/image_raw',
-            callback_group=self.image_group
+            self.get_parameter('color_topic').value,
+            callback_group=self.image_group, qos_profile=qos_profile_sensor_data
         )
         self.depth_sub = Subscriber(
             self, 
             Image, 
-            '/camera/camera/aligned_depth_to_color/image_raw',
-            callback_group=self.image_group
+            self.get_parameter('depth_topic').value,
+            callback_group=self.image_group, qos_profile=qos_profile_sensor_data
         )
                 
         self.ts = ApproximateTimeSynchronizer(
@@ -83,21 +94,16 @@ def main():
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(server)
 
-    # Start the executor in a background thread
-    def spin_executor():
-        executor.spin()
-    executor_thread = threading.Thread(target=spin_executor, daemon=True)
-    executor_thread.start()
-
     try:
-        while rclpy.ok():
-            rclpy.spin_once(server, timeout_sec=0.1)
+        executor.spin()
     except KeyboardInterrupt:
-        server.get_logger().info("Shutting down server")
+        pass
     finally:
+        executor.shutdown()
+        server.visualiser.cleanup()
         server.destroy_node()
-        rclpy.shutdown()
-        executor_thread.join()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
