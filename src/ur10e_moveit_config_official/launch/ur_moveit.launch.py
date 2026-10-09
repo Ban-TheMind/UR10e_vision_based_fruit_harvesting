@@ -387,7 +387,7 @@ def generate_launch_description():
     )
     declared_arguments.append(DeclareLaunchArgument("use_fake_hardware", default_value="false"))
     declared_arguments.extend([
-        DeclareLaunchArgument("camera_mount", default_value="wrist"),
+        DeclareLaunchArgument("camera_mount", default_value="external"),
         DeclareLaunchArgument("kinematics_params_file", default_value=PathJoinSubstitution([FindPackageShare("end_effector_description"), "etc", "robot_calibration.yaml"])),
         DeclareLaunchArgument("launch_rviz", default_value="true", description="Launch RViz?")
     ])

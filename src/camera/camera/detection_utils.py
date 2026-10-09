@@ -1,5 +1,7 @@
 import cv2
 import threading
+from .depth_utils import median_depth_m
+from .geometry import controller_base_to_base_link
 from ultralytics import YOLO
 import numpy as np
 import asyncio
@@ -39,6 +41,7 @@ class DetectionHandler:
         # Current frame data
         self.current_frame = None
         self.current_depth = None
+        self.depth_encoding = None
         
     async def handle_request(self, request):
         if request.command.startswith("detect"):
@@ -51,12 +54,13 @@ class DetectionHandler:
         with self.frame_lock:
             saved_frame = None if self.current_frame is None else self.current_frame.copy()
             saved_depth = None if self.current_depth is None else self.current_depth.copy()
+            depth_encoding = self.depth_encoding
 
         if request.command == 'detect_flip' and saved_frame is not None:
             saved_frame = cv2.flip(saved_frame, 0)
 
         """Async handler for detect command"""
-        if saved_frame is None or saved_depth is None or self.tf_handler.intrinsics is None:
+        if saved_frame is None or saved_depth is None or self.tf_handler.camera_info is None:
             return {
                 'success': False,
                 'message': "No frame available"
@@ -76,7 +80,7 @@ class DetectionHandler:
                     x_center = int((box[0] + box[2]) / 2)
                     y_center = int((box[1] + box[3]) / 2)
                     depth_y = saved_frame.shape[0] - 1 - y_center if request.command == 'detect_flip' else y_center
-                    avg_depth = self.get_average_depth(x_center, depth_y, depth=saved_depth)
+                    avg_depth = self.get_average_depth(x_center, depth_y, depth=saved_depth, encoding=depth_encoding)
 
                     # if invalid 
                     if np.isnan(avg_depth):
@@ -111,10 +115,9 @@ class DetectionHandler:
                         transformed_point = Point()
 
                         # the minus sign converts to actual coordinates wrt. base_link
-                        signs = self.node.get_parameter('legacy_base_sign').value if self.node.get_parameter('coordinate_mode').value == 'legacy' else [1.0, 1.0, 1.0]
-                        transformed_point.x = signs[0] * base_pose.x
-                        transformed_point.y = signs[1] * base_pose.y
-                        transformed_point.z = signs[2] * base_pose.z
+                        transformed_point.x, transformed_point.y, transformed_point.z = controller_base_to_base_link(
+                            base_pose.x, base_pose.y, base_pose.z)
+                        vis_data['planning_point'] = (transformed_point.x, transformed_point.y, transformed_point.z)
                         
                         detections.append(transformed_point)
                         self.last_detections.append(vis_data)
@@ -150,32 +153,15 @@ class DetectionHandler:
         try:
             frame = self.bridge.imgmsg_to_cv2(color_msg, 'bgr8')
             depth = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
+            if frame.shape[:2] != depth.shape[:2]:
+                raise ValueError('Color and aligned depth dimensions differ')
             with self.frame_lock:
                 self.current_frame, self.current_depth = frame, depth
+                self.depth_encoding = depth_msg.encoding
         except Exception as e:
             self.node.get_logger().error(f"Image conversion failed: {str(e)}")
 
-    def get_average_depth(self, x_center, y_center, sampling_radius=5, depth=None):
-        """
-        Compute average depth in a small fixed window around center.
-        
-        Args:
-            x_center, y_center (int): Center coordinates
-            sampling_radius (int): How many pixels to sample around center (default=2 → 5×5 window)
-        
-        Returns:
-            float: Robust average depth
-        """
-        # Extract fixed-size patch
+    def get_average_depth(self, x_center, y_center, sampling_radius=5, depth=None, encoding=None):
         depth = self.current_depth if depth is None else depth
-        depth_patch = depth[
-            max(0, y_center - sampling_radius):min(depth.shape[0], y_center + sampling_radius + 1),
-            max(0, x_center - sampling_radius):min(depth.shape[1], x_center + sampling_radius + 1)
-        ]
-        
-        # Process valid depths
-        valid_depths = depth_patch[(depth_patch > 0) & ~np.isnan(depth_patch)]
-        if len(valid_depths) < 3:
-            return float('nan')
-        
-        return float(np.median(valid_depths))  # Median is more robust than mean
+        encoding = self.depth_encoding if encoding is None else encoding
+        return median_depth_m(depth, encoding, x_center, y_center, sampling_radius)

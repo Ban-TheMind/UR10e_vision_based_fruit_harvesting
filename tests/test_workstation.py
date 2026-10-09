@@ -66,7 +66,7 @@ class LaunchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             preflight.validate_profile(data)
         data['moveit_path_planning_server']['ros__parameters']['table'][0] = 3
-        data['deployment']['calibration_verified'] = True
+        data['camera_server']['ros__parameters']['coordinate_mode'] = 'legacy'
         with self.assertRaises(ValueError):
             preflight.validate_profile(data)
 
@@ -95,15 +95,12 @@ class RequestTests(unittest.TestCase):
 
 
 class CoordinateTests(unittest.TestCase):
-    def test_tf_mode_uses_xy_meters_without_legacy_offset(self):
-        params = {'coordinate_mode': 'tf', 'depth_scale': 0.001}
-        node = Mock()
-        node.get_parameter.side_effect = lambda name: SimpleNamespace(value=params[name])
-        handler = SimpleNamespace(node=node, intrinsics=object())
-        with patch('camera.tf_utils.rs.rs2_deproject_pixel_to_point', return_value=[0.1, 0.2, 1.0]) as deproject:
-            result = TFHandler.pixel_to_3d(handler, 20, 30, 1000)
-        self.assertEqual(deproject.call_args.args[1:], ([20, 30], 1.0))
-        self.assertEqual(result, [0.1, 0.2, 1.0])
+    def test_optical_xy_deprojection_in_meters(self):
+        info = SimpleNamespace(width=640, height=480, k=[500.,0.,320.,0.,500.,240.,0.,0.,1.],
+                               d=[0.]*5, distortion_model='plumb_bob')
+        handler = SimpleNamespace(camera_info=info)
+        result = TFHandler.pixel_to_3d(handler, 370, 340, 1.0)
+        self.assertEqual(result, (0.1, 0.2, 1.0))
 
 
 

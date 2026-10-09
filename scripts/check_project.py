@@ -19,11 +19,9 @@ def validate_profile(config):
         if not isinstance(deployment.get(name), bool):
             raise ValueError(f'deployment.{name} must be boolean')
     camera = config['camera_server']['ros__parameters']
-    if camera['coordinate_mode'] not in ('legacy', 'tf') or camera['depth_scale'] <= 0:
-        raise ValueError('Invalid camera coordinate mode or depth scale')
-    for name in ('legacy_offset', 'legacy_base_sign'):
-        if len(camera[name]) != 3 or not all(math.isfinite(x) for x in camera[name]):
-            raise ValueError(f'Invalid camera {name}')
+    if (camera['coordinate_mode'] != 'eye_to_hand' or deployment.get('camera_mount') != 'external'
+            or camera['camera_frame'] != 'camera_color_optical_frame' or camera['target_frame'] != 'base_link'):
+        raise ValueError('Expected external eye_to_hand camera, color optical input and base_link output')
     planner = config['moveit_path_planning_server']['ros__parameters']
     if len(set(planner['joint_names'])) != 6:
         raise ValueError('Expected six unique joint names')
@@ -55,8 +53,6 @@ def validate_profile(config):
         raise ValueError('Invalid detection confidence')
     if not 0 <= task['gripper_open_width'] <= 85 or not 0 <= task['gripper_close_width'] <= 85 or not 0 <= task['gripper_force'] <= 255:
         raise ValueError('Invalid gripper task parameters')
-    if deployment['calibration_verified'] and camera['coordinate_mode'] != 'tf':
-        raise ValueError('Field-verified deployment must use explicit optical-frame tf mode')
 
 
 def main():
@@ -85,6 +81,8 @@ def main():
         check(f'import {name}', lambda name=name: importlib.import_module(name))
     for name in ('harvesting_bringup', 'camera', 'gripper', 'robotiq_sdk_bridge', 'demo_package', 'moveit_path_planner', 'ur_robot_driver', 'ur10e_moveit_config_official', 'realsense2_camera'):
         check(f'installed package {name}', lambda name=name: get_package_share_directory(name))
+    from camera.geometry import load_calibration
+    check('fixed camera calibration frames / matrix', lambda: load_calibration(config['deployment'].get('camera_calibration_file') or config['camera_server']['ros__parameters'].get('calibration_file') or None))
     def sdk_binary():
         from ament_index_python.packages import get_package_prefix
         import os
@@ -111,6 +109,15 @@ def main():
             raise ValueError('Configured joints are absent from the robot model')
         if 'simple_ee_link' not in {link.attrib['name'] for link in robot.findall('link')}:
             raise ValueError('End-effector missing from robot model')
+        if 'camera_link' in {link.attrib['name'] for link in robot.findall('link')}:
+            raise ValueError('Fixed camera must not be attached to robot model')
+        base_joint = next(joint for joint in robot.findall('joint')
+                          if joint.find('parent').get('link') == 'base_link' and joint.find('child').get('link') == 'base')
+        origin = base_joint.find('origin')
+        rpy = [float(v) for v in origin.get('rpy', '0 0 0').split()]
+        xyz = [float(v) for v in origin.get('xyz', '0 0 0').split()]
+        if any(abs(v) > 1e-9 for v in xyz + rpy[:2]) or not math.isclose(abs(rpy[2]), math.pi, abs_tol=1e-9):
+            raise ValueError('UR base/base_link relation differs from camera conversion')
     check('UR10e model expansion / joints / end effector', robot_model)
     print('FIELD STATUS: calibration not verified; automatic harvesting unavailable' if not config['deployment']['calibration_verified'] else 'FIELD STATUS: marked verified in profile; this check does not prove physical calibration')
     return bool(errors)

@@ -12,11 +12,13 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'calibration'), glob('camera/calibration/*.json')),
         # Install launch files
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         # Add this line to install the models folder
         (os.path.join('share', package_name, 'models'), glob('models/*.pt')),
     ],
+    package_data={'camera': ['calibration/*.json']},
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='davidnie',

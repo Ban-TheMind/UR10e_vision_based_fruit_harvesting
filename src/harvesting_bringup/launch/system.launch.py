@@ -28,10 +28,10 @@ def start(context):
         raise ValueError('motion_enabled must be true or false')
     motion = enabled == 'true'
     rviz = LaunchConfiguration('rviz').perform(context)
-    if deployment.get('camera_mount', 'wrist') not in ('wrist', 'external'):
-        raise ValueError('camera_mount must be wrist or external')
-    if deployment.get('calibration_verified') and config['camera_server']['ros__parameters']['coordinate_mode'] != 'tf':
-        raise ValueError('Verified calibration requires explicit tf coordinate mode')
+    if deployment.get('camera_mount', 'external') != 'external':
+        raise ValueError('This deployment requires camera_mount: external')
+    if deployment.get('calibration_verified') and config['camera_server']['ros__parameters']['coordinate_mode'] != 'eye_to_hand':
+        raise ValueError('Verified calibration requires eye_to_hand coordinate mode')
     actions = []
     if mode in ('fake', 'robot', 'all'):
         fake = mode == 'fake'
@@ -54,7 +54,7 @@ def start(context):
             'ur10e_moveit_config_official', 'ur_moveit.launch.py', {
                 'ur_type': 'ur10e', 'use_fake_hardware': str(fake).lower(),
                 'launch_rviz': rviz, 'launch_servo': 'false',
-                'camera_mount': deployment.get('camera_mount', 'wrist'),
+                'camera_mount': deployment.get('camera_mount', 'external'),
                 'description_file': description, 'kinematics_params_file': calibration,
                 })]))
         # MoveGroup must be available before constructing the planning module.
@@ -70,11 +70,13 @@ def start(context):
             params = config['camera_server']['ros__parameters']
             if not deployment.get('calibration_verified') or not source or not target:
                 raise ValueError('Static camera TF requires verified calibration and explicit frame names')
-            if params['coordinate_mode'] != 'tf' or params['camera_frame'] != source or params['target_frame'] != target:
-                raise ValueError('Camera TF frames must match camera parameters in tf mode')
-            matrix_file = deployment.get('camera_calibration_file') or str(profile.parent / 'calibration/camera_to_base.json')
+            if params['coordinate_mode'] != 'eye_to_hand' or params['camera_frame'] != source or target != 'base':
+                raise ValueError('Camera calibration TF must map optical frame to UR base')
+            matrix_file = deployment.get('camera_calibration_file') or params.get('calibration_file') or str(Path(get_package_share_directory('camera')) / 'calibration/camera_to_base.json')
             if deployment.get('camera_mount') != 'external' or deployment.get('camera_publish_tf', True):
                 raise ValueError('Optical-frame static calibration requires external mount and camera_publish_tf: false to avoid duplicate TF parents')
+            from camera.geometry import load_calibration
+            load_calibration(matrix_file)
             data = json.loads(Path(matrix_file).read_text())
             import numpy as np
             from tf_transformations import quaternion_from_matrix
@@ -99,7 +101,8 @@ def start(context):
             'rgb_camera.color_profile': '640x480x5', 'depth_module.depth_profile': '640x480x5',
         }))
         actions.append(Node(package='camera', executable='camera_node',
-                            name='camera_server', parameters=[config['camera_server']['ros__parameters']], output='screen'))
+                            name='camera_server', parameters=[config['camera_server']['ros__parameters'],
+                                {'calibration_file': deployment.get('camera_calibration_file') or config['camera_server']['ros__parameters'].get('calibration_file', '')}], output='screen'))
     if mode in ('gripper', 'all'):
         actions.append(Node(package='gripper', executable='gripper_server',
                             name='gripper_server', parameters=[config['gripper_server']['ros__parameters'], {'commands_enabled': motion}], output='screen'))

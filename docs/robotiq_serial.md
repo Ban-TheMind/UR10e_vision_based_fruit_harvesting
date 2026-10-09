@@ -29,7 +29,7 @@ On this Ubuntu Humble workstation:
 ./scripts/project gripper
 ```
 
-On a system ROS workspace, use its ROS environment and build `colcon build --packages-up-to gripper`, then source `install/setup.bash`. The bridge needs a C/C++17 compiler, CMake >=3.16 and make; it builds the pinned transport dependency itself. No pyserial/minimalmodbus/pymodbus installation is needed for this backend. This change is on `main`; it does not automatically modify the separate Foxy branch or another computer.
+On a system ROS workspace, use its ROS environment and build `colcon build --packages-up-to gripper`, then source `install/setup.bash`. The bridge needs a C/C++17 compiler, CMake >=3.16 and make; it builds the pinned transport dependency itself. No pyserial/minimalmodbus/pymodbus installation is needed for this backend. The main and Foxy deployment branches use the same official SDK and fixed-camera geometry; another computer must still pull and rebuild its selected branch.
 
 Parameters on `gripper_server`: `serial_port`, `baudrate`, `slave_id`, `serial_timeout` (0.001..3600 seconds), `action_timeout` (seconds), `speed` (raw 0..255). Set these in `src/harvesting_bringup/config/lab.yaml`. `commands_enabled` remains false by default and is set by launch's `motion_enabled` switch.
 

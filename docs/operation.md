@@ -26,7 +26,7 @@
 默认夹爪请求被拒绝，规划请求只规划。不会自动开合夹爪或运行采摘。
 夹爪使用 Robotiq 2F-85 串口 Modbus RTU；宽度 0..85 mm，力度为原始值 0..255（不是 N）。
 先按 [robotiq_serial.md](robotiq_serial.md) 只读状态；reset 服务是显式复位/激活，可能产生校准动作。
-相机独立启动可以检查图像；要返回基座坐标，还需有效 TF。
+相机独立启动可检查图像并用已加载的标定矩阵返回基座坐标，不需要机械臂在线。
 启动多个终端时不要重复启动同一个设备；`all` 已包括三个设备。
 
 完成现场核对后，要允许手动运动/夹爪请求：
@@ -40,18 +40,16 @@ RViz 自身的 Execute 按钮也可能驱动机械臂，不能把规划模块的
 
 ## 视觉坐标与标定
 
-默认 `coordinate_mode: legacy` 保留原有换轴、偏移和符号逻辑，仅供追溯和对比；没有认证其正确性。
-现场确认 optical frame、规划目标帧、深度单位和相机安装方式后：
+默认使用固定外部相机：`camera_mount: external`、`coordinate_mode: eye_to_hand`。
+坐标链路为彩色光学帧 XYZ → 标定矩阵 → UR `base` → MoveIt `base_link`；最后一步为 `(-x, -y, z)`。
+对齐深度的 `16UC1` 按毫米转换，`32FC1` 直接按米使用；其他编码拒绝处理。
+翻转检测图像时先恢复原始像素位置，再取深度和反投影。
 
-1. 设置 `coordinate_mode: tf`；`camera_frame` 填实际光学帧，`target_frame` 填实际规划目标帧。
-2. 若相机已有正确 TF，不额外发布静态 TF。
-3. 若需要发布 Eye-to-Hand 静态 TF，填写 deployment 的 source/target 帧，启用 `publish_camera_tf`。
-   标定文件保存 Camera → Base 的坐标变换；TF 的 parent 是 target，child 是 source。
-   Eye-to-Hand 固定相机设置 `camera_mount: external`，自动选用无腕部相机连接的模型。若静态标定直接连接光学帧，还须设 `camera_publish_tf: false`，避免重复 TF parent。
-4. 完成 `field_verification.md` 后再将 `deployment.calibration_verified` 设为 true。
-
-当前标定默认保存于 `src/harvesting_bringup/config/calibration/camera_to_base.json`。
-不要因为程序能启动就将标定标记为已验证。
+唯一默认矩阵位于 `src/camera/camera/calibration/camera_to_base.json`，构建时随 camera 包安装。
+可以通过配置中的 `camera_calibration_file` 或 camera 参数 `calibration_file` 选择同格式文件。
+矩阵记录输入 `camera_color_optical_frame`、输出 `base`、单位米；加载时检查帧名与矩阵一致性。
+默认不额外发布标定 TF。可选静态 TF 只用于显示，必须使用相同标定并避免重复父帧。
+完成 [field_verification.md](field_verification.md) 的已知点检查后再标记 `calibration_verified: true`；目前仍为 false。
 
 ## 自动采摘（第二个终端）
 

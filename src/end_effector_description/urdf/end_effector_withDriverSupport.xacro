@@ -44,7 +44,7 @@
 
   </joint>
 
-  <xacro:arg name="camera_mount" default="wrist"/>
+  <xacro:arg name="camera_mount" default="external"/>
   <xacro:if value="${'$(arg camera_mount)' == 'wrist'}">
   <link name="camera_link"> </link>
 

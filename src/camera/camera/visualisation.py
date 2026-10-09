@@ -73,13 +73,13 @@ class VisualisationHandler:
             marker_array = MarkerArray()
             
             for i, detection in enumerate(detections):
-                point_3d = detection['point_3d']
+                point_3d = detection['planning_point']
 
-                self.tf_handler.publish_transform(frame_id=self.node.get_parameter('camera_frame').value, child_frame_id=f"detected_object_{i}", point=point_3d)
+                self.tf_handler.publish_transform(frame_id='base_link', child_frame_id=f"detected_object_{i}", point=point_3d)
 
                 # Create RViz marker
                 marker = Marker()
-                marker.header.frame_id = self.node.get_parameter('camera_frame').value
+                marker.header.frame_id = 'base_link'
                 marker.header.stamp = self.node.get_clock().now().to_msg()
                 marker.ns = "detections"
                 marker.id = i

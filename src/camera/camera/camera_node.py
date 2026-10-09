@@ -18,13 +18,14 @@ class CameraServer(Node):
             'model_file': 'best.pt', 'color_topic': '/camera/camera/color/image_raw',
             'depth_topic': '/camera/camera/aligned_depth_to_color/image_raw',
             'camera_info_topic': '/camera/camera/aligned_depth_to_color/camera_info',
-            'show_image': True, 'coordinate_mode': 'legacy', 'camera_frame': 'camera_link',
-            'target_frame': 'base_link', 'depth_scale': 0.001,
-            'legacy_offset': [0.0, 0.238, -0.18], 'legacy_base_sign': [-1.0, -1.0, 1.0],
+            'show_image': True, 'coordinate_mode': 'eye_to_hand', 'camera_frame': 'camera_color_optical_frame',
+            'target_frame': 'base_link', 'calibration_file': '',
         }.items():
             self.declare_parameter(name, value)
-        if self.get_parameter('coordinate_mode').value not in ('legacy', 'tf'):
-            raise ValueError('coordinate_mode must be legacy or tf')
+        if self.get_parameter('coordinate_mode').value != 'eye_to_hand':
+            raise ValueError('coordinate_mode must be eye_to_hand for the fixed laboratory camera')
+        if self.get_parameter('target_frame').value != 'base_link':
+            raise ValueError('Eye-to-hand detections must be returned in base_link')
         # Setup callback groups
         self.service_group = MutuallyExclusiveCallbackGroup()
         self.image_group = ReentrantCallbackGroup()

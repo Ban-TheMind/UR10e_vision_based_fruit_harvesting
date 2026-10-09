@@ -5,13 +5,13 @@ deployment:
   camera_serial: "_406122071837"
   robot_calibration_file: ""  # empty = packaged robot_calibration.yaml
   calibration_verified: false
-  camera_mount: "wrist"     # wrist or external; confirm installation
+  camera_mount: "external"  # laboratory camera is fixed outside the arm
   camera_publish_tf: true   # false when static calibration targets optical frame
-  # Optional Camera -> Base static TF, only for coordinate_mode: tf.
+  # Optional Camera -> Base static TF, for visualization; point conversion uses the same matrix directly.
   publish_camera_tf: false
   camera_source_frame: ""    # confirm optical frame at the laboratory
   camera_target_frame: ""    # confirm MoveIt target frame at the laboratory
-  camera_calibration_file: "" # empty = calibration/camera_to_base.json
+  camera_calibration_file: "" # empty = packaged camera calibration
 
 camera_server:
   ros__parameters:
@@ -20,12 +20,10 @@ camera_server:
     depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
     camera_info_topic: "/camera/camera/aligned_depth_to_color/camera_info"
     show_image: true
-    coordinate_mode: "legacy" # legacy preserves existing calculations; tf uses optical XYZ
-    camera_frame: "camera_link"
+    coordinate_mode: "eye_to_hand" # optical XYZ -> calibrated UR base -> base_link
+    camera_frame: "camera_color_optical_frame"
     target_frame: "base_link"
-    depth_scale: 0.001
-    legacy_offset: [0.0, 0.238, -0.18]
-    legacy_base_sign: [-1.0, -1.0, 1.0]
+    calibration_file: "" # empty = packaged camera/calibration/camera_to_base.json
 
 gripper_server:
   ros__parameters:

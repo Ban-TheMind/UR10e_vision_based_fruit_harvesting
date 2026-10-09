@@ -12,7 +12,10 @@ set(GRIPPERS_BUILD_FAKE OFF CACHE BOOL "" FORCE)
 set(GRIPPERS_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 # Build the SDK's transport dependency from an unmodified pinned release.
 include(ExternalProject)
-find_program(SERIALPORT_MAKE make REQUIRED)
+find_program(SERIALPORT_MAKE make)
+if(NOT SERIALPORT_MAKE)
+  message(FATAL_ERROR "make is required to build the official SDK serial transport")
+endif()
 set(SERIALPORT_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/serialport")
 file(MAKE_DIRECTORY "${SERIALPORT_PREFIX}/include")
 ExternalProject_Add(serialport_build
