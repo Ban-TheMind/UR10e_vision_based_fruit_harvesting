@@ -89,3 +89,23 @@ python tools/test_inference_worker.py
 以允许示教器速度滑块改变实际执行时间；普通控制器保留原监控。
 这不解决机器人程序停止或速度为零，也不证明 Home 完成。
 发送运动的入口必须另设有限等待、故障/停滞取消，并核对 action 结果与最终关节角。
+
+
+## 单终端控制入口
+
+在现场已经完成 `install-project` 构建后，运行 `bash tools/ur10e_control.sh` 仅启动并检查驱动；
+运行 `bash tools/ur10e_control.sh --home` 执行用户已授权的候选 Home `[-180,-90,127,-123,270,0]` 度。
+入口自动加载 Foxy、`ur10e-project-foxy` venv、项目安装环境与 ROS_DOMAIN_ID=61。
+Home 前请将示教器速度滑块设为 5%。入口不更改滑块、不上电、不解除制动、不解锁停止。
+默认只检查，只有明确传入 `--home` 才会发送运动。
+
+入口拒绝同时存在其他驱动或 MoveIt 控制进程，且只停止本次创建的进程组。
+它核对示教器模式与安全状态、实际 URDF headless=1、RTDE 程序状态与速度、reverse 连接，
+以及 scaled 控制器 active，随后仅做 MoveIt 规划并逐点核对现场六轴限位、起点和终点。
+Home 执行使用 ExecuteTrajectory action，最长 600 秒；速度为零、程序停止、安全停止、
+关节超限或 15 秒没有至少 0.05 度关节进展时取消。组合速度缩放大于 10% 时停止。
+Ctrl+C 会取消当前 action 并关闭本次启动的进程。全部日志保存在 `log-project/control-*`。
+只有 action 成功且实测全部关节距目标不超过 0.5 度时，才输出 Home 完成与 home-result.json。
+
+此入口没有增加桌面、支架、线缆的碰撞模型，不能将规划或限位检查当作完整物理安全验证；
+操作人仍需按此前授权的现场路径留意真实空间。机器人程序和 Home 的真机完成状态应以本次输出为准。

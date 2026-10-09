@@ -103,6 +103,7 @@ def main():
     check_source_files()
     check_console_scripts()
     check_configuration()
+    run("single-entry Home safety gates", [sys.executable, "tools/test_ur10e_control.py"])
     run("Foxy hardcoded headless compatibility", [sys.executable, "tools/test_foxy_control_config.py"])
     check_model(args.require_model)
     run("camera geometry and depth units", [sys.executable, "tools/test_offline_geometry.py"])
