@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <!-- UR10e and fixed end-effector for Foxy UR driver and MoveIt -->
 
-<robot name="end_effector_withDriverSupport" xmlns:xacro="http://ros.org/wiki/xacro">
+<robot name="$(arg name)" xmlns:xacro="http://ros.org/wiki/xacro">
   <!-- Including the claw.urdf.xacro file to give scope to xacro:claw. Inclusion is a simple copy-and-paste of code. -->
   <xacro:include filename="$(find end_effector_description)/urdf/end_effector.urdf.xacro" />
 
