@@ -103,6 +103,7 @@ class WorkflowTests(unittest.TestCase):
                    ('rclpy', 'rclpy.node', 'custom_interface', 'custom_interface.srv')}
         overrides = {'motion_enabled': True, 'calibration_verified': False}
         warnings, clients, destroyed = [], [], []
+        configured = []
 
         class FakeNode:
             def __init__(self, name): self.values = {}
@@ -127,7 +128,9 @@ class WorkflowTests(unittest.TestCase):
                         distance_tolerance=0.06)
         with patch.dict(sys.modules, modules):
             module = load('routine_init_gate_test', ROOT / 'src/demo_package/demo_package/routine_base.py')
+            module.configure_execution_timeout = lambda node, seconds: configured.append(seconds)
             node = module.RoutineBase(defaults)
+            self.assertEqual(configured, [600.0])
             self.assertFalse(node.calibration_verified)
             self.assertEqual(len(clients), 4)
             self.assertEqual(len(warnings), 1)
@@ -137,14 +140,17 @@ class WorkflowTests(unittest.TestCase):
             module.RoutineBase(defaults)
             self.assertEqual(warnings, [])
             overrides['motion_enabled'] = False
+            configured.clear()
             clients.clear()
             with self.assertRaisesRegex(RuntimeError, 'motion_enabled'):
                 module.RoutineBase(defaults)
             self.assertEqual(clients, [])
+            self.assertEqual(configured, [])
             self.assertEqual(destroyed, [True])
 
     def test_wrapper_rejects_before_ros(self):
-        for args in (['demo'], ['all', 'motion_enabled:=yes'], ['fake', 'robot_ip:=1.2.3.4'], ['nonsense']):
+        for args in (['demo'], ['all', 'motion_enabled:=yes'], ['fake', 'robot_ip:=1.2.3.4'], ['nonsense'], ['demo', 'motion_enabled:=true', 'execution_timeout:=nan'],
+                     ['demo', 'motion_enabled:=true', 'execution_timeout:=0']):
             result = subprocess.run(['bash', 'scripts/project'] + args, cwd=ROOT, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertNotIn('Foxy environment missing', result.stderr)

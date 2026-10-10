@@ -22,7 +22,7 @@ Usage: ./scripts/project COMMAND [options]
   robot-check     Supervised arm status check (starts its own driver)
   home            Supervised Home movement (starts its own driver)
 Home options: --execution-timeout SECONDS (600) --stall-timeout SECONDS (15)
-Launch options: motion_enabled:=true/false rviz:=true/false
+Launch options: motion_enabled:=true/false rviz:=true/false execution_timeout:=SECONDS (600 for harvesting)
 Environment: HARVEST_PROFILE, HARVEST_CHECK_PYTHON, UR10E_FOXY_VENV, ROS_DOMAIN_ID (default 61)
 See docs/operations.md for the test order and hardware acceptance criteria.
 HELP

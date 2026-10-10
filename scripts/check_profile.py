@@ -11,9 +11,10 @@ if __name__ == '__main__':
     try:
         profile = module.load_profile(sys.argv[1])
         overrides = dict(arg.split(':=', 1) for arg in sys.argv[3:])
-        if set(overrides) - {'motion_enabled', 'rviz'}:
-            raise ValueError('Supported overrides: motion_enabled:=true/false rviz:=true/false')
+        if set(overrides) - {'motion_enabled', 'rviz', 'execution_timeout'}:
+            raise ValueError('Supported overrides: motion_enabled:=true/false rviz:=true/false execution_timeout:=SECONDS')
         module.boolean(overrides.get('rviz', 'true'))
+        module.execution_timeout(profile, overrides.get('execution_timeout', ''))
         plan = module.build_plan(profile, sys.argv[2], overrides.get('motion_enabled', 'false'))
         print('Profile valid; mode=' + sys.argv[2] + '; execution=' + str(plan['allow_execution']))
     except (ValueError, KeyError, OSError, TypeError, IndexError) as error:

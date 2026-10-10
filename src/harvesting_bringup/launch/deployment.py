@@ -12,6 +12,15 @@ def boolean(value):
         return value == 'true'
     raise ValueError('Expected true or false, got ' + str(value))
 
+def execution_timeout(profile, override=''):
+    value = override if override != '' else profile['task'].get('execution_timeout', 600.0)
+    if isinstance(value, bool):
+        raise ValueError('execution_timeout must be finite positive seconds')
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError('execution_timeout must be finite positive seconds')
+    return seconds
+
 def load_profile(path):
     with open(path, encoding='utf-8') as stream:
         profile = json.load(stream)
@@ -40,6 +49,7 @@ def load_profile(path):
         drop = task.get('drop_joint_pos', [])
         if len(drop) != 6 or not all(type(x) in (int, float) and math.isfinite(x) for x in drop):
             raise ValueError('Drop joints require six finite radians in standard UR order')
+    execution_timeout(profile)
     return profile
 
 def build_plan(profile, mode, motion_enabled=False):

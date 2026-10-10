@@ -13,6 +13,7 @@
   <test_depend>python3-pytest</test_depend>
 
   <depend>rclpy</depend>   <!-- Add rclpy as a runtime dependency -->
+  <exec_depend>rcl_interfaces</exec_depend>
   <depend>custom_interface</depend> 
   <depend>camera</depend>
   <depend>gripper</depend>

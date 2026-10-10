@@ -18,6 +18,7 @@
   "task": {
     "calibration_verified": false,
     "max_cycles": 1,
+    "execution_timeout": 600.0,
     "birds_eye_joint_pos": [
       -3.141592653589793,
       -1.5707963267948966,

@@ -47,7 +47,9 @@ def compose(context):
         parameters = dict(profile['gripper'], allow_gripper_commands=plan['allow_gripper_commands'])
         actions.append(Node(package='gripper', executable='gripper_server', output='screen', parameters=[parameters]))
     if plan['routine']:
-        parameters = dict(profile['task'], motion_enabled=True)
+        parameters = dict(profile['task'], motion_enabled=True,
+                          execution_timeout=deployment.execution_timeout(
+                              profile, LaunchConfiguration('execution_timeout').perform(context)))
         actions.append(Node(package='demo_package', executable='vertical_fruit_gripping_demo',
                             output='screen', parameters=[parameters]))
     return actions
@@ -59,4 +61,5 @@ def generate_launch_description():
         DeclareLaunchArgument('mode', default_value='fake', choices=list(deployment.MODES)),
         DeclareLaunchArgument('motion_enabled', default_value='false', choices=['true', 'false']),
         DeclareLaunchArgument('rviz', default_value='true', choices=['true', 'false']),
+        DeclareLaunchArgument('execution_timeout', default_value=''),
         OpaqueFunction(function=compose)])

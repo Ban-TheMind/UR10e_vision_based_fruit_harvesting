@@ -159,7 +159,7 @@ bash scripts/project demo motion_enabled:=true rviz:=false
 使用 ROS 环境自动加载和现有独立推理环境，不需要另开服务调用终端。
 `max_cycles=1` 限制轮数，一轮可能处理多个有效检测目标；不表示只抓一个苹果。
 离线检查不等于现场全链路执行通过。独立 Home 入口的 600/15 秒执行监护只属于 Home，
-完整流程仍使用既有 MoveIt 执行管理和流程服务超时，不应混称为同一套监护。
+完整流程使用下述 MoveIt 每段动作执行上限，不带 Home 的 15 秒停滞监护。
 
 
 ## 规划服务模型参数修复（2026-10-10）
@@ -180,3 +180,26 @@ bash scripts/project demo motion_enabled:=true rviz:=false
 Windows 离线检查验证启动配置和模型共享关系；Foxy/MoveIt C++ 实际编译和运行须由现场命令验证。
 本次修复针对 `Robot model parameter not found` / `Unable to construct robot model`，
 不是对后续完整抓取成功的保证。
+
+
+## 完整采摘执行超时修复（2026-10-10）
+
+流程在首次运动前通过 `/moveit_simple_controller_manager` 参数服务设置并回读核验：
+`trajectory_execution.allowed_execution_duration_scaling=0.0`、
+`trajectory_execution.allowed_goal_duration_margin=execution_timeout`、
+`trajectory_execution.execution_duration_monitoring=true`。
+Foxy 的上限计算为“名义轨迹时长 × 倍率 + 余量”，因此现在每段动作有固定的实际执行上限，
+默认 600 秒；成功后立即继续，超过上限由 MoveIt 取消控制器动作。
+这不会设置或降低机器人速度，且不会修改标定状态。原先 0.592707 秒超时不是标定失败。
+运动服务等待时间至少为执行上限加 60 秒，留出规划和响应时间；相机与夹爪仍使用原服务超时。
+配置文件 `task.execution_timeout` 和启动参数均可设置，启动参数优先；必须为有限正数。
+
+```bash
+git pull --ff-only origin main
+bash scripts/project build --packages-select demo_package harvesting_bringup
+bash scripts/project demo motion_enabled:=true rviz:=false execution_timeout:=600
+```
+
+启动时应出现 `MoveIt 每段动作执行上限 600.0 秒；名义时长倍率 0；参数已回读核验`。
+上述最后一条会真实执行完整采摘流程。参数服务拒绝、未就绪或回读不一致时，首次运动不会发送。
+离线检查验证参数交互和超时传递，实际 Foxy 执行仍需现场验证。
