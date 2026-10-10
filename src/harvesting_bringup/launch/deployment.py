@@ -31,6 +31,15 @@ def load_profile(path):
     joints = task['birds_eye_joint_pos']
     if len(joints) != 6 or not all(isinstance(x, (int, float)) and math.isfinite(x) for x in joints):
         raise ValueError('Scan joints require six finite radians in standard UR order')
+    for name in ('scan_at_home_only', 'return_to_scan_after_drop'):
+        if name in task and type(task[name]) is not bool:
+            raise ValueError(name + ' must be boolean')
+    if task.get('drop_motion', 'cartesian') not in ('joint', 'cartesian'):
+        raise ValueError('drop_motion must be joint or cartesian')
+    if 'drop_joint_pos' in task or task.get('drop_motion') == 'joint':
+        drop = task.get('drop_joint_pos', [])
+        if len(drop) != 6 or not all(type(x) in (int, float) and math.isfinite(x) for x in drop):
+            raise ValueError('Drop joints require six finite radians in standard UR order')
     return profile
 
 def build_plan(profile, mode, motion_enabled=False):

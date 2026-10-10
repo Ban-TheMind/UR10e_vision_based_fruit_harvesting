@@ -36,6 +36,13 @@ class RoutineBase(Node):
                            ('retry_scan_delta', 6)):
             if len(getattr(self, name)) != size:
                 raise ValueError('Invalid pose size: ' + name)
+        if 'drop_joint_pos' in defaults and len(self.drop_joint_pos) != 6:
+            raise ValueError('Invalid pose size: drop_joint_pos')
+        if 'drop_motion' in defaults and self.drop_motion not in ('joint', 'cartesian'):
+            raise ValueError('drop_motion must be joint or cartesian')
+        for name in ('scan_at_home_only', 'return_to_scan_after_drop'):
+            if name in defaults and type(getattr(self, name)) is not bool:
+                raise ValueError(name + ' must be boolean')
         if not 0 <= self.detection_min_confidence <= self.detection_confidence <= 1:
             raise ValueError('Invalid detection confidence range')
         if not (0 <= self.gripper_close_width <= 85 and 0 <= self.gripper_open_width <= 85

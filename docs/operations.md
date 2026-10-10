@@ -28,7 +28,7 @@
 
 ## 配置与环境
 
-联合启动配置在 `src/harvesting_bringup/config/site.json`，采用 JSON，离线解析不依赖 PyYAML。记录机器人 IP/headless、相机序列号和推理 Python、串口参数及流程参数。配置中的默认扫描和投放姿态继承历史示例，不视为现场已验收轨迹；默认 `calibration_verified=false`。
+联合启动配置在 `src/harvesting_bringup/config/site.json`，采用 JSON，离线解析不依赖 PyYAML。记录机器人 IP/headless、相机序列号和推理 Python、串口参数及流程参数。现场配置的扫描姿态采用已实测 Home，投放姿态采用操作者 2026-10-10 示教的关节位置。抓取偏移和方向仍继承历史示例，尚需核对相机外参、TCP 和抓取几何；默认 `calibration_verified=false`。
 
 关节数组统一为 `[shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3]`，单位弧度。笛卡尔位置为米，姿态为弧度，规划参考系为 `base_link`；夹爪宽度为标称毫米，力为 0–255 原始编码。
 
@@ -112,3 +112,29 @@ bash scripts/project camera-check --class-id 0 --confidence 0.3
 YOLO 原始框已经受推理引擎内部默认阈值影响，不是所有候选框。
 普通 `detect` 同样返回数量诊断，仅 `detect_debug` 保存图片。
 本入口尚需现场运行验收；返回坐标在 MoveIt base_link 下，单位米。
+
+
+## 现场扫描与投放姿态（2026-10-10）
+
+`site.json` 的任务参数使用标准 UR 关节顺序，配置内单位为弧度：
+
+| 用途 | 示教器关节角（度） |
+|---|---|
+| Home 扫描 | `[-180, -90, 127, -123, 270, 0]` |
+| 示教投放点 | `[-148.38, -87.44, 132.69, -131.78, 269.45, -0.33]` |
+
+`scan_at_home_only=true` 表示在 Home 稳定后检测，不再发送历史示例的额外笛卡尔扫描或扫描重试运动。
+`drop_motion=joint` 使用 `drop_joint_pos` 规划投放运动，成功返回后才松爪；失败或状态未知时中止，保持夹持。
+`return_to_scan_after_drop=false` 表示本次流程在投放后结束，不再额外返回 Home；若配置多轮，下一轮仍先去 Home。
+旧配置不指定这些参数时，保留原来的扫描、笛卡尔投放和结束返回扫描行为。
+
+示教终点记录不等于已验证抓取到投放的整段轨迹。照片中刀具位置栏是在所选特征下的当前 TCP 位姿，
+不能当作安装设置中的 TCP 偏移，也不能直接把示教器姿态数值填成规划器欧拉角。
+本次只更新扫描和投放；未修改 `pick_offset`、`pick_orientation` 或标定确认值。
+
+```bash
+git pull --ff-only origin main
+bash scripts/project build --packages-select demo_package harvesting_bringup
+```
+
+以上命令只同步与构建，不启动抓取。

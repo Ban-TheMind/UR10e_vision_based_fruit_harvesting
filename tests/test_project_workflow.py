@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import math
 from pathlib import Path
 import subprocess
 import sys
@@ -79,7 +80,10 @@ class WorkflowTests(unittest.TestCase):
         profile = copy.deepcopy(PROFILE)
         profile['task']['calibration_verified'] = True
         self.assertTrue(deployment.build_plan(profile, 'demo', True)['routine'])
-        self.assertEqual(profile['task']['birds_eye_joint_pos'], [0.0, -1.9, 1.2, -2.0, -1.57, 0.0])
+        for actual, degrees in zip(profile['task']['birds_eye_joint_pos'], [-180, -90, 127, -123, 270, 0]):
+            self.assertAlmostEqual(actual, math.radians(degrees))
+        for actual, degrees in zip(profile['task']['drop_joint_pos'], [-148.38, -87.44, 132.69, -131.78, 269.45, -0.33]):
+            self.assertAlmostEqual(actual, math.radians(degrees))
         with self.assertRaises(ValueError): deployment.build_plan(profile, 'typo')
         with self.assertRaises(ValueError): deployment.boolean('yes')
 
@@ -108,7 +112,9 @@ class WorkflowTests(unittest.TestCase):
                           drop_position=[0.822, 0.583, 0.556, 0., 3.14, 0.],
                           approach_offset=[-0.5, 0., -0.1], pick_offset=[-0.18, 0.06, -0.03],
                           pick_orientation=[-1.56, 0., -1.571], distance_tolerance=0.06,
-                          gripper_open_width=85, gripper_close_width=0, grip_seconds=0.)
+                          gripper_open_width=85, gripper_close_width=0, grip_seconds=0.,
+                          scan_at_home_only=False, drop_motion='cartesian',
+                          return_to_scan_after_drop=True)
             node.__dict__.update(values)
             point = types.SimpleNamespace(x=0.8, y=0.2, z=0.5)
             node.run_detection_at_curr_pos = lambda: [point]
@@ -139,6 +145,28 @@ class WorkflowTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): node.run_demo()
             self.assertEqual(events[-1], ('move', values['drop_position']))
             self.assertEqual(events[-2], ('grip', 0))
+            # Site mode must skip the inherited scan and use joint-mode drop.
+            node.__dict__.update(PROFILE['task'])
+            node.settle_seconds = 0.0
+            node.run_detection_at_pos = lambda *args: self.fail('Unexpected inherited scan')
+            events.clear()
+            node.send_movement_request = lambda pose, command='cartesian', *args: events.append(('move', pose, command))
+            node.run_demo()
+            self.assertEqual(events[0], ('move', PROFILE['task']['birds_eye_joint_pos'], 'joint'))
+            close = events.index(('grip', 0))
+            self.assertEqual(events[close + 1], ('move', PROFILE['task']['drop_joint_pos'], 'joint'))
+            self.assertEqual(events[close + 2], ('grip', 85))
+            self.assertEqual(events[-1], ('grip', 85))
+            self.assertEqual(sum(event[0] == 'move' for event in events), 3)
+            events.clear()
+            def fail_on_joint_drop(pose, command='cartesian', *args):
+                events.append(('move', pose, command))
+                if command == 'joint' and pose == PROFILE['task']['drop_joint_pos']:
+                    raise RuntimeError('drop failure')
+            node.send_movement_request = fail_on_joint_drop
+            with self.assertRaises(RuntimeError): node.run_demo()
+            self.assertEqual(events[-2], ('grip', 0))
+            self.assertEqual(events[-1], ('move', PROFILE['task']['drop_joint_pos'], 'joint'))
             # Empty detections exhaust the configured limit and then return.
             node.max_detect_attempts = 3
             node.detection_confidence = 0.5
