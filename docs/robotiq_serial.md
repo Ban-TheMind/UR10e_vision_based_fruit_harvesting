@@ -20,18 +20,17 @@ Recorded field settings: `/dev/ttyUSB0`, 115200, 8N1, slave 9. Confirm the port 
 
 ## Build and startup
 
-On this Ubuntu Humble workstation:
+Use the laboratory computer's existing Foxy environment, then build and source this project:
 
 ```bash
-./scripts/pixi install --frozen
-./scripts/project build
-./scripts/project check
-./scripts/project gripper
+colcon build --packages-up-to gripper
+source install/setup.bash
+ros2 run gripper gripper_server
 ```
 
-On a system ROS workspace, use its ROS environment and build `colcon build --packages-up-to gripper`, then source `install/setup.bash`. The bridge needs a C/C++17 compiler, CMake >=3.16 and make; it builds the pinned transport dependency itself. No pyserial/minimalmodbus/pymodbus installation is needed for this backend. The main and Foxy deployment branches use the same official SDK and fixed-camera geometry; another computer must still pull and rebuild its selected branch.
+The bridge needs a C/C++17 compiler, CMake >=3.16 and make; it builds the pinned transport dependency itself. No Python serial library is needed. All maintained branch tips use the same Foxy deployment code; the laboratory computer must pull main and rebuild. If using the existing `install-project` workspace, preserve its build/install directory options and source `install-project/local_setup.bash` instead.
 
-Parameters on `gripper_server`: `serial_port`, `baudrate`, `slave_id`, `serial_timeout` (0.001..3600 seconds), `action_timeout` (seconds), `speed` (raw 0..255). Set these in `src/harvesting_bringup/config/lab.yaml`. `commands_enabled` remains false by default and is set by launch's `motion_enabled` switch.
+Parameters on `gripper_server`: `serial_port`, `baudrate`, `slave_id`, `serial_timeout` (0.001..3600 seconds), `action_timeout` (seconds), `speed` (raw 0..255). Pass these as ROS node parameters (`--ros-args -p serial_port:=...`) or a ROS parameter YAML file. `allow_gripper_commands` remains false by default on Foxy. Enable it only explicitly for supervised tests.
 
 ## Service units and completion
 
@@ -41,7 +40,11 @@ Parameters on `gripper_server`: `serial_port`, `baudrate`, `slave_id`, `serial_t
 
 The pinned SDK uses FC03 to read status and FC16 to write commands. The previous self-written driver used FC04 for status reads. The SDK/installed-firmware combination must therefore be verified first with the read-only status command on the real device; prior successful FC04 communication does not prove this new backend works.
 
-Move requests check readiness before writing and wait for matching target echo, readiness, go-to flag and terminal object status. Closing contact or reaching target returns success, but neither guarantees reliable grasping. Opening contact is an error. Fault/transport failure/timeout returns failure. A timeout or stopping the helper does not guarantee physical motion stopped; inspect before retrying.
+Move requests check readiness before writing and wait for matching target echo, readiness, go-to flag and terminal object status.
+
+An idle device may report communication timeout `0x09` on the first successful status read. Before sending a move, the bridge polls status only at 50 ms intervals for this code, within a budget of `min(action_timeout, 0.5)` seconds and at most 10 additional reads. A blocking SDK read is bounded separately by `serial_timeout` and can extend the elapsed polling budget. Motion is sent only after the fault clears and activation is complete; a persistent timeout, any other fault, or a transport error fails without sending a command. This recovery never resets/activates the device, and it never retries a motion command or suppresses faults after a command is sent.
+
+Closing contact or reaching target returns success, but neither guarantees reliable grasping. Opening contact is an error. Fault/transport failure/timeout returns failure. A timeout or stopping the helper does not guarantee physical motion stopped; inspect before retrying.
 
 `ResetGripperCmd(reset_gripper=true)` explicitly clears activation, waits for reset, sets activation and waits for fault-free readiness. Device firmware performs calibration, possibly moving fingers. It is not tool-power reset or robot homing. Normal move requests never automatically activate an unready device.
 
@@ -50,7 +53,7 @@ Move requests check readiness before writing and wait for matching target echo, 
 After building, with no other controller using the port:
 
 ```bash
-./scripts/pixi run --frozen ros2 run gripper gripper_status --port /dev/ttyUSB0
+ros2 run gripper gripper_status --port /dev/ttyUSB0
 ```
 
 This issues one SDK status read and no activation/motion writes. A successful read verifies communication, not grasping. Keep actuator commands disabled until supervised field testing. Tool geometry, TCP, calibration and robot poses still need separate verification.
@@ -58,9 +61,9 @@ This issues one SDK status read and no activation/motion writes. A successful re
 ## Offline verification
 
 ```bash
-./scripts/pixi run --frozen python -m unittest discover -s src/gripper/test -p 'test_*safety.py'
-./scripts/pixi run --frozen python -m unittest discover -s src/gripper/test -p 'test_robotiq_sdk.py'
-./scripts/pixi run --frozen ctest --test-dir build/robotiq_sdk_bridge --output-on-failure
+python -m unittest discover -s src/gripper/test -p 'test_*safety.py'
+python -m unittest discover -s src/gripper/test -p 'test_robotiq_sdk.py'
+ctest --test-dir build/robotiq_sdk_bridge --output-on-failure
 ```
 
 Python tests verify the service guards and SDK process boundary. Native tests link the actual official SDK with a simulated serial fixture (construction sends nothing, status sends only a read, corrupt replies fail), and test project completion/fault/activation policies without devices. Hardware motion has not been tested on this workstation.

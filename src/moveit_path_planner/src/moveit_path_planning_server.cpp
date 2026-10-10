@@ -1,22 +1,20 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <thread>
 #include <cmath>
-#include <map>
-#include <algorithm>
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit_msgs/msg/constraints.hpp"
 #include "moveit_msgs/msg/joint_constraint.hpp"
 #include "moveit_msgs/msg/orientation_constraint.hpp"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "custom_interface/srv/movement_request.hpp"
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/LinearMath/Matrix3x3.h> 
+#include "movement_request_policy.hpp"
 
 class MoveitPathPlanningServer {
 public:
@@ -31,12 +29,11 @@ public:
     // base_link -> tool0
     move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
       node_, 
-      node_->declare_parameter<std::string>("planning_group", "ur_manipulator"),
+      "ur_manipulator",
       std::shared_ptr<tf2_ros::Buffer>(),
       rclcpp::Duration::from_seconds(5.0)
     );
 
-    move_group_->setPoseReferenceFrame(node_->declare_parameter<std::string>("pose_reference_frame", "base_link"));
     // Configure planner parameters
     node_->declare_parameter("planning_time", 20.0);
 
@@ -48,20 +45,15 @@ public:
     node_->declare_parameter("goal_position_tolerance", 0.001);  
     node_->declare_parameter("goal_orientation_tolerance", 0.001);  
 
-    node_->declare_parameter("execute_enabled", false);
-    node_->declare_parameter("max_planning_attempts", 3);
-    node_->declare_parameter("velocity_scaling", 0.1);
-    node_->declare_parameter("acceleration_scaling", 0.1);
-    node_->declare_parameter<std::string>("planner_id", "TRRTkConfigDefault");
-    node_->declare_parameter<std::vector<std::string>>("joint_names", {
-      "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "shoulder_pan_joint"});
-    setupCollisionObjects();
-    for (const auto &name : {"velocity_scaling", "acceleration_scaling"}) {
-      const auto value = node_->get_parameter(name).as_double();
-      if (!(value > 0.0 && value <= 1.0)) throw std::runtime_error("Scaling must be in (0, 1]");
+    // The example scene contains dimensions from the original author's workcell.
+    // It must be explicitly enabled only after the actual cell is measured.
+    node_->declare_parameter("load_example_collision_objects", false);
+    if (node_->get_parameter("load_example_collision_objects").as_bool()) {
+      setupCollisionObjects();
     }
-    move_group_->setMaxVelocityScalingFactor(node_->get_parameter("velocity_scaling").as_double());
-    move_group_->setMaxAccelerationScalingFactor(node_->get_parameter("acceleration_scaling").as_double());
+
+    // A service request must not move real hardware during commissioning by default.
+    node_->declare_parameter("allow_execution", false);
 
     // Apply parameters
     move_group_->setPlanningTime(node_->get_parameter("planning_time").as_double());
@@ -70,13 +62,11 @@ public:
     move_group_->setGoalOrientationTolerance(node_->get_parameter("goal_orientation_tolerance").as_double());
     // move_group_->setPlannerId("RRTConnect");
     // move_group_->setPlannerId("BKPIECEkConfigDefault");
-    move_group_->setPlannerId(node_->get_parameter("planner_id").as_string());
+    move_group_->setPlannerId("TRRTkConfigDefault");
 
-    service_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     service_ = node_->create_service<custom_interface::srv::MovementRequest>(
       "/moveit_path_plan",
-      std::bind(&MoveitPathPlanningServer::handle_request, this, _1, _2),
-      rmw_qos_profile_services_default, service_group_
+      std::bind(&MoveitPathPlanningServer::handle_request, this, _1, _2)
     );
   }
 
@@ -190,8 +180,22 @@ public:
 {
     RCLCPP_INFO(node_->get_logger(), "Received MoveIt path planning request. Command: %s", request->command.c_str());
 
-    if (request->positions.size() != 6 || !std::all_of(request->positions.begin(), request->positions.end(), [](double x) { return std::isfinite(x); })) {
-        RCLCPP_ERROR(node_->get_logger(), "Expected 6 position elements, got %zu", request->positions.size());
+    const auto command = movement_request_policy::parse_command(request->command);
+    if (command == movement_request_policy::Command::Invalid) {
+        RCLCPP_ERROR(node_->get_logger(), "Unsupported command: %s", request->command.c_str());
+        response->success = false;
+        return;
+    }
+
+    if (!movement_request_policy::valid_positions(request->positions)) {
+        RCLCPP_ERROR(node_->get_logger(), "Expected 6 finite position elements, got %zu", request->positions.size());
+        response->success = false;
+        return;
+    }
+
+    const bool execute_request = movement_request_policy::is_execution(command);
+    if (execute_request && !node_->get_parameter("allow_execution").as_bool()) {
+        RCLCPP_ERROR(node_->get_logger(), "Execution disabled; use plan_cartesian or plan_joint for a dry run");
         response->success = false;
         return;
     }
@@ -202,16 +206,10 @@ public:
 
     // Handle different command types
     bool target_set = false;
-    if (request->command == "cartesian") {
+    if (movement_request_policy::is_cartesian(command)) {
         target_set = set_cartesian_target(request->positions);
-    } 
-    else if (request->command == "joint") {
+    } else {
         target_set = set_joint_target(request->positions);
-    }
-    else {
-        RCLCPP_ERROR(node_->get_logger(), "Invalid command: %s", request->command.c_str());
-        response->success = false;
-        return;
     }
 
     if (!target_set) {
@@ -226,25 +224,17 @@ public:
     }
 
     // Common planning and execution logic
-    response->success = plan_and_execute();
+    response->success = plan_and_maybe_execute(execute_request);
 }
 
   void setupCollisionObjects() {
-    const auto frame_id = node_->declare_parameter<std::string>("scene_frame", "world");
+    std::string frame_id = "world";
     moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-    const std::vector<std::pair<std::string, std::vector<double>>> objects = {
-      {"back_wall", {2.4, 0.04, 3.0, 0.70, -0.60, 0.5}},
-      {"side_wall", {0.04, 2.4, 3.0, -0.55, 0.25, 0.8}},
-      {"table", {3.0, 3.0, 0.01, 0.85, 0.25, 0.05}},
-      {"ceiling", {2.4, 2.4, 0.04, 0.85, 0.25, 1.5}}};
-    for (const auto &object : objects) {
-      const auto values = node_->declare_parameter<std::vector<double>>(object.first, object.second);
-      if (values.size() != 6 || !std::all_of(values.begin(), values.end(), [](double v) { return std::isfinite(v); }) || values[0] <= 0 || values[1] <= 0 || values[2] <= 0)
-        throw std::runtime_error("Invalid scene box: " + object.first);
-      if (!planning_scene_interface.applyCollisionObject(generateCollisionObject(
-          values[0], values[1], values[2], values[3], values[4], values[5], frame_id, object.first)))
-        throw std::runtime_error("Could not apply collision object: " + object.first);
-    }
+
+    planning_scene_interface.applyCollisionObject(generateCollisionObject(2.4, 0.04, 3.0, 0.70, -0.60, 0.5, frame_id, "backWall"));
+    planning_scene_interface.applyCollisionObject(generateCollisionObject(0.04, 2.4, 3.0, -0.55, 0.25, 0.8, frame_id, "sideWall"));
+    planning_scene_interface.applyCollisionObject(generateCollisionObject(3, 3, 0.01, 0.85, 0.25, 0.05, frame_id, "table"));
+    planning_scene_interface.applyCollisionObject(generateCollisionObject(2.4, 2.4, 0.04, 0.85, 0.25, 1.5, frame_id, "ceiling"));
   }
 
   auto generateCollisionObject(float sx, float sy, float sz, float x, float y, float z, const std::string& frame_id, const std::string& id) -> moveit_msgs::msg::CollisionObject {
@@ -277,9 +267,11 @@ public:
 private:
   bool set_cartesian_target(const std::vector<double>& positions) {
     try {
-        geometry_msgs::msg::Pose target_pose = create_pose_from_positions(positions);
-        move_group_->setPoseTarget(target_pose);
-        return true;
+        geometry_msgs::msg::PoseStamped target_pose;
+        target_pose.header.frame_id = "base_link";
+        target_pose.header.stamp = node_->now();
+        target_pose.pose = create_pose_from_positions(positions);
+        return move_group_->setPoseTarget(target_pose);
     } catch (const std::exception& e) {
         RCLCPP_ERROR(node_->get_logger(), "Failed to set Cartesian target: %s", e.what());
         return false;
@@ -311,49 +303,33 @@ private:
   }
 
   std::map<std::string, double> create_joint_map_from_positions(const std::vector<double>& positions) {
-    const auto names = node_->get_parameter("joint_names").as_string_array();
-    if (names.size() != 6) throw std::runtime_error("joint_names must contain six names");
-    std::map<std::string, double> result;
-    for (size_t i = 0; i < names.size(); ++i) result[names[i]] = positions[i];
-    if (result.size() != 6) throw std::runtime_error("joint_names must be unique");
-    return result;
+    return movement_request_policy::joint_targets(positions);
   }
 
-  bool plan_and_execute() {
+  bool plan_and_maybe_execute(bool execute_request) {
     moveit::planning_interface::MoveGroupInterface::Plan plan;
-    bool success = false;
-    int attempts = 0;
-    const int max_attempts = node_->get_parameter("max_planning_attempts").as_int();
-    if (max_attempts < 1 || max_attempts > 10) return false;
-    move_group_->setStartStateToCurrentState();
-    
-    while (!success && attempts < max_attempts) {
-        success = (move_group_->plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
-        attempts++;
-        if (!success) {
-            RCLCPP_WARN(node_->get_logger(), "Planning attempt %d failed, retrying...", attempts);
-
-        }
-    }
-    
-    if (success) {
-        RCLCPP_INFO(node_->get_logger(), "Plan successful after %d attempts. Executing...", attempts);
-        if (!node_->get_parameter("execute_enabled").as_bool()) {
-            RCLCPP_INFO(node_->get_logger(), "Plan-only mode: trajectory not executed; movement success is false.");
-            return false;
-        }
-        return move_group_->execute(plan) == moveit::core::MoveItErrorCode::SUCCESS;
-    } else {
-        RCLCPP_ERROR(node_->get_logger(), "Planning failed after %d attempts.", max_attempts);
+    if (!move_group_->plan(plan)) {
+        RCLCPP_ERROR(node_->get_logger(), "Planning failed; no trajectory was executed");
         return false;
     }
+
+    if (!execute_request) {
+        RCLCPP_INFO(node_->get_logger(), "Plan succeeded; execution was not requested");
+        return true;
+    }
+
+    const auto execution_result = move_group_->execute(plan);
+    if (!execution_result) {
+        RCLCPP_ERROR(node_->get_logger(), "Trajectory execution failed");
+        return false;
+    }
+    return true;
   }
 
 
   rclcpp::Node::SharedPtr node_;
   std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
   rclcpp::Service<custom_interface::srv::MovementRequest>::SharedPtr service_;
-  rclcpp::CallbackGroup::SharedPtr service_group_;
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   sensor_msgs::msg::JointState::SharedPtr latest_joint_state_;
@@ -376,21 +352,9 @@ int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("moveit_path_planning_server");
-  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 2);
-  executor.add_node(node);
-  std::thread spinner([&executor]() { executor.spin(); });
-  int result = 0;
-  try {
-    MoveitPathPlanningServer server(node);
-    spinner.join();
-  } catch (const std::exception &error) {
-    RCLCPP_ERROR(node->get_logger(), "Planner startup failed: %s", error.what());
-    executor.cancel();
-    if (spinner.joinable()) spinner.join();
-    result = 1;
-  }
-  if (rclcpp::ok()) rclcpp::shutdown();
-  return result;
+  MoveitPathPlanningServer server(node);
+  rclcpp::spin(node);
+  rclcpp::shutdown();
   return 0;
 }
 

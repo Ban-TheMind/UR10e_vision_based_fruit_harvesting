@@ -17,10 +17,12 @@ setup(
     maintainer_email='davidnie0418@gmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
 			'horizontal_fruit_gripping_demo = demo_package.horizontal_fruit_gripping_demo:main',
 			'vertical_fruit_gripping_demo = demo_package.vertical_fruit_gripping_demo:main',
+			'vertical_fruit_gripping_demo_tmp = demo_package.vertical_fruit_gripping_demo_tmp:main',
         ],
     },
 )

@@ -9,7 +9,7 @@ from gripper.robotiq_sdk import RobotiqSDK
 class GripperServer(Node):
     def __init__(self):
         super().__init__('gripper_server')
-        self.declare_parameter('commands_enabled', False)
+        self.declare_parameter('allow_gripper_commands', False)
         for name, value in [('serial_port', '/dev/ttyUSB0'), ('baudrate', 115200),
                             ('slave_id', 9), ('serial_timeout', 0.5),
                             ('action_timeout', 10.0), ('speed', 64)]:
@@ -26,7 +26,7 @@ class GripperServer(Node):
 
     def gripper_callback(self, request, response):
         response.success = False
-        if not self.get_parameter('commands_enabled').value:
+        if not self.get_parameter('allow_gripper_commands').value:
             response.message = 'Gripper commands disabled; explicitly enable motion in launch'
             return response
         try:
@@ -47,7 +47,7 @@ class GripperServer(Node):
 
     def reset_gripper_callback(self, request, response):
         response.success = False
-        if not self.get_parameter('commands_enabled').value:
+        if not self.get_parameter('allow_gripper_commands').value:
             response.message = 'Gripper commands disabled'
             return response
         if not request.reset_gripper:
