@@ -44,7 +44,7 @@ bash tools/foxy_site_preflight.sh --build
 
 完整编译通过后，才继续做相机话题、关节状态和静止目标的现场核查。静止目标验证需要独立测量的目标点，离线几何测试只能验证计算逻辑，无法证明手眼标定仍符合当前安装位置。
 
-静止目标核验时，复制 `tools/static_target_template.json`，填入现场 `/camera/camera/aligned_depth_to_color/camera_info` 的内参、目标像素和深度（米），以及**独立测量的 UR 控制器 `base` 坐标**。不要把程序预测坐标再填回测量值。运行 `python tools/check_static_target.py 记录文件.json`；它输出各点误差，并在任一点超过 `max_error_m` 时返回失败。模板的 3 cm 仅是示例阈值，应按现场测量误差和任务精度确定。
+静止目标核验时，复制 `tools/static_target_template.json`，填入现场 `/camera/aligned_depth_to_color/camera_info` 的内参、目标像素和深度（米），以及**独立测量的 UR 控制器 `base` 坐标**。不要把程序预测坐标再填回测量值。运行 `python tools/check_static_target.py 记录文件.json`；它输出各点误差，并在任一点超过 `max_error_m` 时返回失败。模板的 3 cm 仅是示例阈值，应按现场测量误差和任务精度确定。
 
 ### 手工复核命令
 

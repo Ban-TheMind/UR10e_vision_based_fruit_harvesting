@@ -82,3 +82,18 @@ SSH 连接成功不表示当前 Codex 会话自动拥有对另一 VSCode 集成�
 修复提交号见上表，可在本仓库 `git show <提交号>` 查看。原项目：[DaviddNie/UR10e_vision_based_fruit_harvesting](https://github.com/DaviddNie/UR10e_vision_based_fruit_harvesting)。现维护 fork：[Ban-TheMind/UR10e_vision_based_fruit_harvesting](https://github.com/Ban-TheMind/UR10e_vision_based_fruit_harvesting)。
 
 历史 ROS2/UR 行为参照 [UR 速度缩放与控制器文档](https://docs.universal-robots.com/Universal_Robots_ROS2_Documentation/doc/ur_robot_driver/ur_controllers/doc/index.html)。外部文档是说明依据，现场软件版本和日志才是本机故障的判断依据。
+
+
+## 2026-10-10 相机话题现场修复
+
+安装 RealSense ROS 4.51.1 后，D435I（406122071837）成功开启 640×480、15 FPS 的
+RGB 与深度流，真实权重加载后 Camera Server ready，但检测返回 No frame available。
+现场 topic info 确认 `/camera/color/image_raw` 与
+`/camera/aligned_depth_to_color/image_raw` 各有 1 个发布者、0 个订阅者；
+旧 `/camera/camera/...` 各有 0 个发布者、1 个订阅者。
+这是当前 Foxy 驱动与项目订阅话题不一致，服务就绪不等于图像已接收。
+
+项目图像订阅及默认相机内参话题统一到单层 `/camera/...`，保留传感器 QoS
+与 RGB/深度同步。内参使用 `/camera/aligned_depth_to_color/camera_info`，
+仍可通过 camera_info_topic 参数覆盖。部署时重建 camera 并停止、重启相机节点。
+修复后的图像接收、内参接收与实际检测坐标须由现场服务响应继续验证。

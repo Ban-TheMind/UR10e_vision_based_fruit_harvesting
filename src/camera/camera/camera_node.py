@@ -50,14 +50,14 @@ class CameraServer(Node):
         self.color_sub = Subscriber(
             self, 
             Image, 
-            '/camera/camera/color/image_raw',
+            '/camera/color/image_raw',
             qos_profile=qos_profile_sensor_data,
             callback_group=self.image_group
         )
         self.depth_sub = Subscriber(
             self, 
             Image, 
-            '/camera/camera/aligned_depth_to_color/image_raw',
+            '/camera/aligned_depth_to_color/image_raw',
             qos_profile=qos_profile_sensor_data,
             callback_group=self.image_group
         )

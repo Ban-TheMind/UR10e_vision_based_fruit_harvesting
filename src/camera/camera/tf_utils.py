@@ -10,7 +10,7 @@ class TFHandler:
         self.node = node
         self.broadcaster = tf2_ros.TransformBroadcaster(self.node)
         self.camera_info = None
-        for name, default in (('camera_info_topic', '/camera/camera/aligned_depth_to_color/camera_info'),
+        for name, default in (('camera_info_topic', '/camera/aligned_depth_to_color/camera_info'),
                               ('calibration_file', '')):
             if not node.has_parameter(name):
                 node.declare_parameter(name, default)
