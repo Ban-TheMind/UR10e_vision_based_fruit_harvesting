@@ -21,9 +21,13 @@ class RoutineBase(Node):
         for name, value in parameters.items():
             self.declare_parameter(name, value)
             setattr(self, name, self.get_parameter(name).value)
-        if not self.motion_enabled or not self.calibration_verified:
+        if not self.motion_enabled:
             self.destroy_node()
-            raise RuntimeError('Routine requires motion_enabled and field-verified calibration')
+            raise RuntimeError('Routine requires motion_enabled:=true')
+        if not self.calibration_verified:
+            self.get_logger().warning(
+                'Calibration status is unverified; motion was explicitly enabled. '
+                'Targets use the configured camera transform, pick offset and orientation.')
         if self.max_cycles < 1 or self.max_attempts < 1 or self.max_detect_attempts < 1 or self.service_timeout <= 0 or self.startup_timeout <= 0:
             raise ValueError('Counts and timeouts must be positive')
         for name in defaults:

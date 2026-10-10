@@ -18,7 +18,7 @@ Usage: ./scripts/project COMMAND [options]
   camera-check    One-terminal camera detection + snapshots; no arm/gripper
   gripper         Gripper service only; commands disabled by default
   all             Arm + camera + gripper; no autonomous routine
-  demo            Bounded harvesting; requires verified calibration and enablement
+  demo            Full harvesting cycle; requires motion_enabled:=true
   robot-check     Supervised arm status check (starts its own driver)
   home            Supervised Home movement (starts its own driver)
 Home options: --execution-timeout SECONDS (600) --stall-timeout SECONDS (15)

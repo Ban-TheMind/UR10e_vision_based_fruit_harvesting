@@ -16,7 +16,7 @@
 | `./scripts/project camera` | 固定 RealSense、视觉服务 | 连接相机，不启动机械臂和夹爪 |
 | `./scripts/project gripper` | 夹爪服务 | 默认拒绝串口命令，不自动激活 |
 | `./scripts/project all` | 三个子系统联合启动 | 无自动采摘，运动和夹爪命令默认关闭 |
-| `./scripts/project demo motion_enabled:=true` | 有限次数采摘 | 需在配置中确认现场标定；会发送动作 |
+| `./scripts/project demo motion_enabled:=true` | 完整采摘流程，默认 1 轮 | 明确开启后会发送机械臂和夹爪动作 |
 | `./scripts/project robot-check` | 独立单终端机械臂状态检查 | 自行启动驱动；不发送轨迹 |
 | `./scripts/project home` | 独立单终端 Home 检查及动作 | 会发送运动；保留原有运行状态和最终关节核验 |
 
@@ -32,7 +32,7 @@
 
 关节数组统一为 `[shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3]`，单位弧度。笛卡尔位置为米，姿态为弧度，规划参考系为 `base_link`；夹爪宽度为标称毫米，力为 0–255 原始编码。
 
-任务配置可补充流程节点声明的 `drop_position`、`pick_offset`、超时等参数。`calibration_verified` 只有在机械臂工厂标定、相机外参、扫描/抓取/投放姿态、TCP/负载和作业空间分别核验后才设为 `true`。设置该值不是测量的替代品。修改配置后重启相应节点。
+任务配置可补充流程节点声明的 `drop_position`、`pick_offset`、超时等参数。`calibration_verified` 是标定状态记录：`false` 会在流程启动时提示，不再阻断执行；是否允许动作由显式 `motion_enabled:=true` 决定。保持真实标定状态，只有现场核验后才记录为 `true`。修改配置后重启相应节点。
 
 ```bash
 # 使用另一份本地配置，不修改已提交的默认配置。
@@ -138,3 +138,25 @@ bash scripts/project build --packages-select demo_package harvesting_bringup
 ```
 
 以上命令只同步与构建，不启动抓取。
+
+
+## 完整流程显式执行（2026-10-10）
+
+已有的一键入口 `project demo` 启动真实 UR 驱动、MoveIt、视觉服务、夹爪服务和采摘流程。
+`calibration_verified=false` 不再是启动门槛，启动预检和流程节点两处均已调整；保留未核验状态提示。
+不带 `motion_enabled:=true` 仍会在启动设备前拒绝采摘。fake 模式仍禁止物理执行。
+规划或夹爪失败后中止，投放运动成功后才松爪。抓取偏移和方向未在这次修改中调整。
+
+先停止已有相机、机械臂或联合启动进程，再在现场一个终端执行：
+
+```bash
+git pull --ff-only origin main
+bash scripts/project build --packages-select demo_package harvesting_bringup
+bash scripts/project demo motion_enabled:=true rviz:=false
+```
+
+最后一条会真实发送动作：Home 检测、抓取、示教点投放、松爪。
+使用 ROS 环境自动加载和现有独立推理环境，不需要另开服务调用终端。
+`max_cycles=1` 限制轮数，一轮可能处理多个有效检测目标；不表示只抓一个苹果。
+离线检查不等于现场全链路执行通过。独立 Home 入口的 600/15 秒执行监护只属于 Home，
+完整流程仍使用既有 MoveIt 执行管理和流程服务超时，不应混称为同一套监护。

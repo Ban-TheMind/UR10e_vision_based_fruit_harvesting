@@ -75,8 +75,13 @@ class WorkflowTests(unittest.TestCase):
                         self.assertEqual(dict(action.launch_arguments)['robot_controller'], 'scaled_joint_trajectory_controller')
 
     def test_enablement_and_calibration(self):
-        for mode, enabled in [('demo', False), ('demo', True), ('fake', True)]:
+        for mode, enabled in [('demo', False), ('fake', True)]:
             with self.assertRaises(ValueError): deployment.build_plan(PROFILE, mode, enabled)
+        self.assertFalse(PROFILE['task']['calibration_verified'])
+        plan = deployment.build_plan(PROFILE, 'demo', True)
+        self.assertTrue(plan['routine'])
+        self.assertTrue(plan['allow_execution'])
+        self.assertTrue(plan['allow_gripper_commands'])
         profile = copy.deepcopy(PROFILE)
         profile['task']['calibration_verified'] = True
         self.assertTrue(deployment.build_plan(profile, 'demo', True)['routine'])
@@ -86,6 +91,51 @@ class WorkflowTests(unittest.TestCase):
             self.assertAlmostEqual(actual, math.radians(degrees))
         with self.assertRaises(ValueError): deployment.build_plan(profile, 'typo')
         with self.assertRaises(ValueError): deployment.boolean('yes')
+
+    def test_routine_init_requires_enablement_but_not_calibration_flag(self):
+        modules = {name: types.ModuleType(name) for name in
+                   ('rclpy', 'rclpy.node', 'custom_interface', 'custom_interface.srv')}
+        overrides = {'motion_enabled': True, 'calibration_verified': False}
+        warnings, clients, destroyed = [], [], []
+
+        class FakeNode:
+            def __init__(self, name): self.values = {}
+            def declare_parameter(self, name, value):
+                self.values[name] = overrides.get(name, value)
+            def get_parameter(self, name):
+                return types.SimpleNamespace(value=self.values[name])
+            def get_logger(self):
+                return types.SimpleNamespace(warning=warnings.append, info=lambda _: None)
+            def destroy_node(self): destroyed.append(True)
+            def create_client(self, service, name):
+                clients.append(name)
+                return types.SimpleNamespace(srv_name=name, wait_for_service=lambda **_: True)
+
+        modules['rclpy.node'].Node = FakeNode
+        for name in ('CameraSrv', 'MovementRequest', 'GripperCmd', 'ResetGripperCmd'):
+            setattr(modules['custom_interface.srv'], name, object)
+        defaults = dict(birds_eye_joint_pos=PROFILE['task']['birds_eye_joint_pos'],
+                        bird_eye_position=[0.0] * 6, drop_position=[0.0] * 6,
+                        approach_offset=[0.0] * 3, pick_offset=[0.0] * 3,
+                        pick_orientation=[0.0] * 3, retry_scan_delta=[0.0] * 6,
+                        distance_tolerance=0.06)
+        with patch.dict(sys.modules, modules):
+            module = load('routine_init_gate_test', ROOT / 'src/demo_package/demo_package/routine_base.py')
+            node = module.RoutineBase(defaults)
+            self.assertFalse(node.calibration_verified)
+            self.assertEqual(len(clients), 4)
+            self.assertEqual(len(warnings), 1)
+            self.assertIn('unverified', warnings[0])
+            overrides['calibration_verified'] = True
+            warnings.clear()
+            module.RoutineBase(defaults)
+            self.assertEqual(warnings, [])
+            overrides['motion_enabled'] = False
+            clients.clear()
+            with self.assertRaisesRegex(RuntimeError, 'motion_enabled'):
+                module.RoutineBase(defaults)
+            self.assertEqual(clients, [])
+            self.assertEqual(destroyed, [True])
 
     def test_wrapper_rejects_before_ros(self):
         for args in (['demo'], ['all', 'motion_enabled:=yes'], ['fake', 'robot_ip:=1.2.3.4'], ['nonsense']):

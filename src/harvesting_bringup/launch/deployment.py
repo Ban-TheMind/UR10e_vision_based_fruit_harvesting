@@ -48,8 +48,8 @@ def build_plan(profile, mode, motion_enabled=False):
     enabled = boolean(motion_enabled)
     if mode == 'fake' and enabled:
         raise ValueError('fake mode is isolated and does not enable physical actuators')
-    if mode == 'demo' and not (enabled and profile['task']['calibration_verified']):
-        raise ValueError('demo requires motion_enabled:=true and field-verified calibration in the profile')
+    if mode == 'demo' and not enabled:
+        raise ValueError('demo requires motion_enabled:=true')
     # fake deliberately contains no camera, serial server or autonomous routine.
     return {'robot': mode in ('fake', 'robot', 'all', 'demo'),
             'camera': mode in ('camera', 'all', 'demo'),
