@@ -70,12 +70,14 @@ class DetectionHandler:
             
             detections = []
             self.last_detections = []
+            matched = invalid_depth = missing_projection = 0
 
             for detection in results:
                 box = detection['box']
                 cls_id = detection['class_id']
                 conf = detection['confidence']
                 if cls_id == request.identifier and conf > request.conf:
+                    matched += 1
                     x_center = int((box[0] + box[2]) / 2)
                     y_center = int((box[1] + box[3]) / 2)
                     # Detection may use a vertically flipped color image, while
@@ -87,12 +89,14 @@ class DetectionHandler:
 
                     # if invalid 
                     if np.isnan(avg_depth):
-                        print(f"INVALID DEPTH!!!! SKIPPING!!!!")
+                        invalid_depth += 1
+                        self.node.get_logger().warning("目标深度无效，跳过")
                         continue
                     
                     point_3d = self.tf_handler.pixel_to_3d(x_center, camera_y, avg_depth)
 
                     if point_3d is None:
+                        missing_projection += 1
                         continue
 
                     point_msg = Point()
@@ -123,10 +127,28 @@ class DetectionHandler:
             
             self.visualiser.update_cv_visualization(saved_frame, self.last_detections)
 
+            message = (f"Found {len(detections)} objects; YOLO原始框={len(results)}, "
+                       f"类别/阈值通过={matched}, 无效深度={invalid_depth}, "
+                       f"缺少投影/内参={missing_projection}")
+            if request.command == 'detect_debug':
+                directory = os.environ.get('HARVEST_DIAGNOSTIC_DIR', '/tmp/ur10e-camera-check')
+                os.makedirs(directory, exist_ok=True)
+                raw_path = os.path.join(directory, 'rgb.png')
+                marked_path = os.path.join(directory, 'detections.png')
+                marked = saved_frame.copy()
+                for item in results:
+                    x1, y1, x2, y2 = [int(v) for v in item['box']]
+                    cv2.rectangle(marked, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(marked, '{} {:.2f}'.format(item['class_id'], item['confidence']),
+                                (x1, max(15, y1)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                if not cv2.imwrite(raw_path, saved_frame) or not cv2.imwrite(marked_path, marked):
+                    raise RuntimeError('无法保存诊断图像')
+                message += '; RGB=' + raw_path + '; 原始检测图=' + marked_path
+            self.node.get_logger().info(message)
             return {
                 'coordinates': detections,
                 'success': True,
-                'message': f"Found {len(detections)} objects"
+                'message': message
             }
             
         except Exception as e:

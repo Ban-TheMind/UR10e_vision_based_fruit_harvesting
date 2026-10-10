@@ -15,6 +15,7 @@ Usage: ./scripts/project COMMAND [options]
   fake            Fake arm + MoveIt; no physical camera/gripper
   robot           Real arm + MoveIt; planning services only by default
   camera          RealSense + perception only
+  camera-check    One-terminal camera detection + snapshots; no arm/gripper
   gripper         Gripper service only; commands disabled by default
   all             Arm + camera + gripper; no autonomous routine
   demo            Bounded harvesting; requires verified calibration and enablement
@@ -36,6 +37,10 @@ HELP
     python3 scripts/check_profile.py "$profile" "$command" "$@"
     source scripts/ros_env.sh
     exec ros2 launch harvesting_bringup system.launch.py "profile:=$profile" "mode:=$command" "$@"
+    ;;
+  camera-check)
+    source scripts/ros_env.sh
+    exec timeout --signal=INT --kill-after=20 180 python3 -u tools/camera_check.py "$@"
     ;;
   robot-check|home)
     if [[ "$command" == home ]]; then exec bash tools/ur10e_control.sh --home "$@"; fi

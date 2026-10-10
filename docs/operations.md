@@ -90,3 +90,25 @@ bash scripts/project home --execution-timeout 600 --stall-timeout 15
 中断后留 20 秒清理；不会让自定义执行超时受旧固定 720 秒限制。
 执行中每 2 秒报告耗时、有效速度倍率与距 Home 最大关节误差。
 该改动须现场验收，离线通过不等于真机 Home 已完成。
+
+
+## 单终端视觉诊断
+
+先 Ctrl+C 停止原 `project camera`，再运行：
+
+```bash
+bash scripts/project camera-check
+# 默认苹果类别 0、置信度阈值 0.3，可显式调整
+bash scripts/project camera-check --class-id 0 --confidence 0.3
+```
+
+入口自动加载项目环境，只启动相机驱动与视觉服务，等待 RGB/对齐深度图像，
+请求一次 `detect_debug` 后关闭本次相机进程。已有相机节点时拒绝重复启动。
+不启动机械臂、夹爪或自动采摘。检测响应最长等待 75 秒，会话最长 180 秒。
+
+`log-project/camera-check-*` 保存 camera.log、result.json、实际推理输入 rgb.png
+及原始识别框 detections.png。响应区分 YOLO 原始框、类别/阈值通过、无效深度、
+缺少投影/内参与最终三维坐标；零目标时请求可成功，但不代表已找到可抓取点。
+YOLO 原始框已经受推理引擎内部默认阈值影响，不是所有候选框。
+普通 `detect` 同样返回数量诊断，仅 `detect_debug` 保存图片。
+本入口尚需现场运行验收；返回坐标在 MoveIt base_link 下，单位米。
