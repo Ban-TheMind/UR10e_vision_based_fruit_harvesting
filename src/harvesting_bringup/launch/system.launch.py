@@ -28,11 +28,11 @@ def compose(context):
         common.update({'use_fake_hardware': str(plan['fake']).lower(),
                        'robot_controller': plan['controller'], 'launch_rviz': 'false'})
         actions.append(include('end_effector_description', 'foxy_ur_control.launch.py', common))
-        moveit = dict(common, launch_rviz=str(rviz).lower())
+        moveit = dict(common, launch_rviz=str(rviz).lower(),
+                      launch_planning_server='true',
+                      allow_execution=str(plan['allow_execution']).lower())
         actions.append(TimerAction(period=4.0, actions=[
-            include('end_effector_description', 'foxy_moveit.launch.py', moveit),
-            Node(package='moveit_path_planner', executable='moveit_path_planning_server',
-                 output='screen', parameters=[{'allow_execution': plan['allow_execution']}])]))
+            include('end_effector_description', 'foxy_moveit.launch.py', moveit)]))
     if plan['camera']:
         camera = profile['camera']
         actions.append(include('realsense2_camera', 'rs_launch.py', {

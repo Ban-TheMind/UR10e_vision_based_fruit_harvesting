@@ -16,6 +16,16 @@
 #include <tf2/LinearMath/Matrix3x3.h> 
 #include "movement_request_policy.hpp"
 
+// Overrides (including the model and nested IK parameters) are declared
+// at node construction. Preserve them when adding optional service defaults.
+template <typename T>
+void declare_default_parameter(const rclcpp::Node::SharedPtr& node,
+                               const std::string& name, const T& value) {
+  if (!node->has_parameter(name)) {
+    node->declare_parameter<T>(name, value);
+  }
+}
+
 class MoveitPathPlanningServer {
 public:
   MoveitPathPlanningServer(const rclcpp::Node::SharedPtr& node)
@@ -35,25 +45,25 @@ public:
     );
 
     // Configure planner parameters
-    node_->declare_parameter("planning_time", 20.0);
+    declare_default_parameter(node_, "planning_time", 20.0);
 
     // IMPORTANT!!!!!!!!!!!!!!!!!
     // Refrain urself from loosing the tolerance, if the planning is slow, it's probably not the fault of the tolerance
     // Why?
     // If you increase it to 0.05, there will be a max goal displacement of 0.05m in all axis, that's a nightmare to tune
-    node_->declare_parameter("goal_joint_tolerance", 0.001);
-    node_->declare_parameter("goal_position_tolerance", 0.001);  
-    node_->declare_parameter("goal_orientation_tolerance", 0.001);  
+    declare_default_parameter(node_, "goal_joint_tolerance", 0.001);
+    declare_default_parameter(node_, "goal_position_tolerance", 0.001);
+    declare_default_parameter(node_, "goal_orientation_tolerance", 0.001);
 
     // The example scene contains dimensions from the original author's workcell.
     // It must be explicitly enabled only after the actual cell is measured.
-    node_->declare_parameter("load_example_collision_objects", false);
+    declare_default_parameter(node_, "load_example_collision_objects", false);
     if (node_->get_parameter("load_example_collision_objects").as_bool()) {
       setupCollisionObjects();
     }
 
     // A service request must not move real hardware during commissioning by default.
-    node_->declare_parameter("allow_execution", false);
+    declare_default_parameter(node_, "allow_execution", false);
 
     // Apply parameters
     move_group_->setPlanningTime(node_->get_parameter("planning_time").as_double());
@@ -351,7 +361,9 @@ private:
 int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<rclcpp::Node>("moveit_path_planning_server");
+  rclcpp::NodeOptions options;
+  options.automatically_declare_parameters_from_overrides(true);
+  auto node = std::make_shared<rclcpp::Node>("moveit_path_planning_server", options);
   MoveitPathPlanningServer server(node);
   rclcpp::spin(node);
   rclcpp::shutdown();

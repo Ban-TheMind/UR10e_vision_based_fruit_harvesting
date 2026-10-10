@@ -160,3 +160,23 @@ bash scripts/project demo motion_enabled:=true rviz:=false
 `max_cycles=1` 限制轮数，一轮可能处理多个有效检测目标；不表示只抓一个苹果。
 离线检查不等于现场全链路执行通过。独立 Home 入口的 600/15 秒执行监护只属于 Home，
 完整流程仍使用既有 MoveIt 执行管理和流程服务超时，不应混称为同一套监护。
+
+
+## 规划服务模型参数修复（2026-10-10）
+
+联合启动的规划服务由 `foxy_moveit.launch.py` 与 `move_group` 共用同一组
+`robot_description`、`robot_description_semantic`、`robot_description_kinematics`。
+机器人描述继续使用项目工具模型、UR10e 现场工厂标定；语义模型和 IK 配置继续读取 Foxy `ur_moveit_config`。
+服务节点在构造时加载参数覆盖，默认参数仅在尚未声明时添加，避免模型缺失及重复声明异常。
+`launch_planning_server` 默认关闭，独立 Home 仍只启动 MoveIt action；联合入口显式开启规划服务，
+执行开关继续来自当前模式，不改变抓取与投放位置、速度或超时设置。
+
+```bash
+git pull --ff-only origin main
+bash scripts/project build --packages-select end_effector_description moveit_path_planner harvesting_bringup
+bash scripts/project demo motion_enabled:=true rviz:=false
+```
+
+Windows 离线检查验证启动配置和模型共享关系；Foxy/MoveIt C++ 实际编译和运行须由现场命令验证。
+本次修复针对 `Robot model parameter not found` / `Unable to construct robot model`，
+不是对后续完整抓取成功的保证。

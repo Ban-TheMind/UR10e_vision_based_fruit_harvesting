@@ -137,6 +137,18 @@ def generate_launch_description():
             description="Trajectory controller started by the UR control launch. Use scaled_joint_trajectory_controller for the real robot.",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "launch_planning_server", default_value="false", choices=["true", "false"],
+            description="Start the project planning service with the same robot model as MoveIt.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "allow_execution", default_value="false", choices=["true", "false"],
+            description="Allow the project planning service to execute requested trajectories.",
+        )
+    )
     return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])
 
 
@@ -330,6 +342,21 @@ def launch_setup(context):
         ],
     )
 
+    # Build the service here so its URDF, SRDF and IK solver cannot drift
+    # from the model supplied to move_group. Standalone Home leaves it disabled.
+    planning_server_node = Node(
+        package="moveit_path_planner",
+        executable="moveit_path_planning_server",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("launch_planning_server")),
+        parameters=[
+            robot_description,
+            robot_description_semantic,
+            robot_description_kinematics,
+            {"allow_execution": LaunchConfiguration("allow_execution").perform(context) == "true"},
+        ],
+    )
+
     # rviz with moveit configuration
     rviz_config_file = PathJoinSubstitution(
         [FindPackageShare(moveit_config_package), "rviz", "view_robot.rviz"]
@@ -362,6 +389,7 @@ def launch_setup(context):
         move_group_node,
         rviz_node,
         static_tf,
+        planning_server_node,
     ]
 
     return nodes_to_start

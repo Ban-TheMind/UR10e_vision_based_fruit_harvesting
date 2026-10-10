@@ -48,9 +48,9 @@ class WorkflowTests(unittest.TestCase):
         modules['launch_ros.actions'].Node = Action
         with patch.dict(sys.modules, modules):
             launch = load('system_launch_test', LAUNCH / 'system.launch.py')
-            for mode, expected in [('fake', {'moveit_path_planner'}), ('robot', {'moveit_path_planner'}),
+            for mode, expected in [('fake', set()), ('robot', set()),
                                    ('camera', {'camera'}), ('gripper', {'gripper'}),
-                                   ('all', {'moveit_path_planner', 'camera', 'gripper'})]:
+                                   ('all', {'camera', 'gripper'})]:
                 context = {'profile': str(ROOT / 'src/harvesting_bringup/config/site.json'),
                            'mode': mode, 'motion_enabled': 'false', 'rviz': 'false'}
                 actions = launch.compose(context)
@@ -62,6 +62,12 @@ class WorkflowTests(unittest.TestCase):
                     params = node.parameters[0]
                     self.assertFalse(params.get('allow_execution', False))
                     self.assertFalse(params.get('allow_gripper_commands', False))
+                if mode in ('fake', 'robot', 'all'):
+                    includes = [a for a in flattened if hasattr(a, 'launch_arguments')]
+                    moveit = next(a for a in includes if a.args[0].args[0].endswith('foxy_moveit.launch.py'))
+                    args = dict(moveit.launch_arguments)
+                    self.assertEqual(args['launch_planning_server'], 'true')
+                    self.assertEqual(args['allow_execution'], 'false')
                 if mode == 'fake':
                     includes = [a for a in flattened if hasattr(a, 'launch_arguments')]
                     self.assertEqual(len(includes), 2)
