@@ -20,7 +20,7 @@ def run(label, command):
 
 
 def check_source_files():
-    python_files = list((ROOT / "src").rglob("*.py")) + list((ROOT / "tools").glob("*.py"))
+    python_files = list((ROOT / "src").rglob("*.py")) + list((ROOT / "tools").glob("*.py")) + list((ROOT / "scripts").glob("*.py")) + list((ROOT / "tests").glob("*.py"))
     for path in python_files:
         ast.parse(path.read_text(encoding="utf-8"), filename=str(path),
                   feature_version=(3, 8))
@@ -62,10 +62,10 @@ def check_console_scripts():
 
 
 def check_configuration():
-    launch = (ROOT / "src/end_effector_description/launch/display.launch.py").read_text()
+    launch = (ROOT / "src/harvesting_bringup/config/site.json").read_text()
     xacro = ET.parse(str(ROOT / "src/end_effector_description/urdf/end_effector_withDriverSupport.xacro"))
     links = {element.get("name") for element in xacro.iter("link")}
-    required = ("192.168.11.60", "_406122071837", "640,480,15")
+    required = ("192.168.11.60", "406122071837", "640,480,15")
     if not all(value in launch for value in required):
         raise ValueError("Robot IP, camera serial or supported profiles differ from the site configuration")
     if "simple_ee_link" not in links:
@@ -103,6 +103,7 @@ def main():
     check_source_files()
     check_console_scripts()
     check_configuration()
+    run("staged launch and routine behavior", [sys.executable, "tests/test_project_workflow.py"])
     run("single-entry Home safety gates", [sys.executable, "tools/test_ur10e_control.py"])
     run("Foxy hardcoded headless compatibility", [sys.executable, "tools/test_foxy_control_config.py"])
     check_model(args.require_model)

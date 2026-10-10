@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -eo pipefail
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_dir"
+command="${1:-help}"
+if (( $# )); then shift; fi
+profile="${HARVEST_PROFILE:-$repo_dir/src/harvesting_bringup/config/site.json}"
+case "$command" in
+  help|-h|--help)
+    cat <<'HELP'
+Usage: ./scripts/project COMMAND [options]
+  check           Offline validation; no hardware, no ROS required
+  build           Build Foxy into build-project/install-project/log-project
+  site-check      Read-only Foxy dependency and Xacro check
+  fake            Fake arm + MoveIt; no physical camera/gripper
+  robot           Real arm + MoveIt; planning services only by default
+  camera          RealSense + perception only
+  gripper         Gripper service only; commands disabled by default
+  all             Arm + camera + gripper; no autonomous routine
+  demo            Bounded harvesting; requires verified calibration and enablement
+  robot-check     Supervised arm status check (starts its own driver)
+  home            Supervised Home movement (starts its own driver)
+Launch options: motion_enabled:=true/false rviz:=true/false
+Environment: HARVEST_PROFILE, HARVEST_CHECK_PYTHON, UR10E_FOXY_VENV, ROS_DOMAIN_ID (default 61)
+See docs/operations.md for the test order and hardware acceptance criteria.
+HELP
+    ;;
+  check) exec "${HARVEST_CHECK_PYTHON:-python3}" tools/offline_preflight.py "$@" ;;
+  build)
+    HARVEST_LOAD_INSTALL=0 source scripts/ros_env.sh
+    exec colcon --log-base log-project build --build-base build-project --install-base install-project --symlink-install "$@"
+    ;;
+  site-check) exec bash tools/foxy_site_preflight.sh "$@" ;;
+  fake|robot|camera|gripper|all|demo)
+    python3 scripts/check_profile.py "$profile" "$command" "$@"
+    source scripts/ros_env.sh
+    exec ros2 launch harvesting_bringup system.launch.py "profile:=$profile" "mode:=$command" "$@"
+    ;;
+  robot-check|home)
+    if (( $# )); then echo 'robot-check/home accept no extra arguments' >&2; exit 2; fi
+    if [[ "$command" == home ]]; then exec bash tools/ur10e_control.sh --home; fi
+    exec bash tools/ur10e_control.sh
+    ;;
+  *) echo "Unknown command: $command; use ./scripts/project help" >&2; exit 2 ;;
+esac

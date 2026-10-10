@@ -19,7 +19,7 @@ sudo apt-get install --no-install-recommends \
   ros-foxy-realsense2-camera ros-foxy-xacro
 ```
 
-项目专用 Python 3.8 环境位于 `/home/ubuntu/Desktop/robot_learning/.venvs/ur10e-foxy`。它使用 `--system-site-packages` 读取 Foxy 的 `rclpy`、`cv_bridge` 等 Ubuntu 包；通过该环境安装的 Python 包只写入自己的目录。构建工具 `colcon-common-extensions` 和兼容的 `pytest` 已装在此环境。YOLO 推理由单独子进程调用现有 VPP 的 Python 3.10，仅读取其包和模型，不向 VPP 安装任何东西。可通过相机节点参数 `inference_python` 指向日后新建的推理环境。
+统一入口默认读取 `/home/ubuntu/Desktop/robot_learning/.venvs/ur10e-project-foxy`。早期记录使用 `.venvs/ur10e-foxy`；应按现场实际目录设置 `UR10E_FOXY_VENV`，本次没有创建或迁移环境。项目专用 Python 3.8 环境使用 `--system-site-packages` 读取 Foxy 的 `rclpy`、`cv_bridge` 等 Ubuntu 包；通过该环境安装的 Python 包只写入自己的目录。构建工具 `colcon-common-extensions` 和兼容的 `pytest` 已装在此环境。YOLO 推理由单独子进程调用现有 VPP 的 Python 3.10，仅读取其包和模型，不向 VPP 安装任何东西。可通过相机节点参数 `inference_python` 指向日后新建的推理环境。
 
 `src/camera/models/best.pt` 由 Git LFS 管理。普通 Git 检出可能只得到文本占位文件；运行 `tools/test_inference_worker.py` 前必须取回真实权重。当前版本会在启动相机节点时明确检查这一点。
 
@@ -51,9 +51,9 @@ bash tools/foxy_site_preflight.sh --build
 ```bash
 cd /home/ubuntu/Desktop/robot_learning/UR10e_vision_based_fruit_harvesting
 source /opt/ros/foxy/setup.bash
-source /home/ubuntu/Desktop/robot_learning/.venvs/ur10e-foxy/bin/activate
-colcon build --symlink-install
-source install/setup.bash
+source /home/ubuntu/Desktop/robot_learning/.venvs/ur10e-project-foxy/bin/activate
+./scripts/project build
+source install-project/local_setup.bash
 python -m unittest src/gripper/test/test_gripper_safety.py
 g++ -std=c++17 -Wall -Wextra -Werror -I src/moveit_path_planner/src \
   src/moveit_path_planner/test/test_movement_request_policy.cpp \
@@ -62,7 +62,7 @@ g++ -std=c++17 -Wall -Wextra -Werror -I src/moveit_path_planner/src \
 python tools/test_inference_worker.py
 ```
 
-主入口是 `ros2 launch end_effector_description display.launch.py`。它会连接真实 UR10e 和相机，因此应在核对设备、控制器和工作空间后再启动。规划服务默认 `allow_execution=false`，夹爪服务默认 `allow_gripper_commands=false`。仅编译或启动并不代表机械臂的运动学、TCP、负载、障碍物和相机外参已经得到现场验证。
+主入口是 `./scripts/project`，详见 [内部操作手册](operations.md) 和 [分层测试](test_plan.md)。旧 `display.launch.py` 已转入统一启动，默认 fake；真实机械臂使用 `project robot`，联合设备使用 `project all`，应在现场核对设备、控制器和工作空间后再启动。规划服务默认 `allow_execution=false`，夹爪服务默认 `allow_gripper_commands=false`。仅编译或启动并不代表机械臂的运动学、TCP、负载、障碍物和相机外参已经得到现场验证。
 
 ## 现场待核对
 

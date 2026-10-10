@@ -3,25 +3,8 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ ! -f /opt/ros/foxy/setup.bash ]]; then
-  echo 'FAIL: /opt/ros/foxy/setup.bash is missing' >&2
-  exit 1
-fi
-set +u
-source /opt/ros/foxy/setup.bash
+HARVEST_LOAD_INSTALL=0 source "$repo_dir/scripts/ros_env.sh"
 set -u
-venv="${UR10E_FOXY_VENV:-/home/ubuntu/Desktop/robot_learning/.venvs/ur10e-foxy}"
-if [[ -f "$venv/bin/activate" ]]; then
-  set +u
-  source "$venv/bin/activate"
-  set -u
-  echo "Python environment: $venv"
-fi
-venv="${UR10E_FOXY_VENV:-/home/ubuntu/Desktop/robot_learning/.venvs/ur10e-foxy}"
-if [[ -f "$venv/bin/activate" ]]; then
-  source "$venv/bin/activate"
-  echo "Python environment: $venv"
-fi
 if [[ "${ROS_DISTRO:-}" != foxy ]]; then
   echo "FAIL: expected Foxy, got ${ROS_DISTRO:-unset}" >&2
   exit 1
@@ -67,15 +50,14 @@ print('PASS RealSense Foxy launch arguments')
 PY
 
 cd "$repo_dir"
-python3 -c 'import serial; print("PASS pyserial dependency")'
 python3 tools/offline_preflight.py
 
 if [[ "${1:-}" == --build ]]; then
-  colcon build --symlink-install
+  bash scripts/project build
 fi
-if [[ -f install/setup.bash ]]; then
+if [[ -f install-project/local_setup.bash ]]; then
   set +u
-  source install/setup.bash
+  source install-project/local_setup.bash
   set -u
 fi
 if ! ros2 pkg prefix end_effector_description >/dev/null 2>&1; then

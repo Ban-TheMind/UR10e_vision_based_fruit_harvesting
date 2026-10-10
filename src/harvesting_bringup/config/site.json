@@ -1,0 +1,30 @@
+{
+  "robot": {
+    "ur_type": "ur10e",
+    "robot_ip": "192.168.11.60",
+    "headless_mode": true
+  },
+  "camera": {
+    "serial_no": "406122071837",
+    "profile": "640,480,15",
+    "inference_python": "/home/ubuntu/miniconda3/envs/VPP/bin/python",
+    "calibration_file": ""
+  },
+  "gripper": {
+    "serial_port": "/dev/ttyUSB0",
+    "baudrate": 115200,
+    "slave_id": 9
+  },
+  "task": {
+    "calibration_verified": false,
+    "max_cycles": 1,
+    "birds_eye_joint_pos": [
+      0.0,
+      -1.9,
+      1.2,
+      -2.0,
+      -1.57,
+      0.0
+    ]
+  }
+}
