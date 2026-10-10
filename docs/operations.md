@@ -67,3 +67,26 @@ git merge --ff-only origin/main
 ```
 
 若存在未提交改动或快进失败，先识别改动和分叉；不要用强制重置掩盖问题。现场再构建、停止旧节点、重启并按 `docs/test_plan.md` 分层验收。Git 更新不会更新运行中的进程，也不自动同步 Codex 对话。
+
+
+## Home 速度与超时（2026-10-10 更新）
+
+`bash scripts/project home` 接受大于 0、最高 100% 的有效速度倍率；
+100% 表示按规划轨迹速度执行，不表示绕过机器人安全限值。
+规划速度与加速度缩放仍各为 0.1，不自动改动示教器倍率。
+
+```bash
+# 默认：执行总超时 600 秒，无进展超时 15 秒
+bash scripts/project home
+# 显式设置（秒），两者必须为有限正数，停滞超时不能超过执行总超时
+bash scripts/project home --execution-timeout 600 --stall-timeout 15
+```
+
+执行前在 `/moveit_simple_controller_manager` 显式设置并回读
+`trajectory_execution.execution_duration_monitoring=false`，处理 Foxy 的启动覆盖未生效问题。
+参数服务缺失、拒绝设置或回读不符时停止，不发送轨迹。
+不再以名义时长约 6 秒判断低速轨迹超时；入口仍负责有限执行时间、停滞取消、
+程序/安全/关节状态和最终到位检查。外层会话看门狗随执行超时增加 180 秒，
+中断后留 20 秒清理；不会让自定义执行超时受旧固定 720 秒限制。
+执行中每 2 秒报告耗时、有效速度倍率与距 Home 最大关节误差。
+该改动须现场验收，离线通过不等于真机 Home 已完成。

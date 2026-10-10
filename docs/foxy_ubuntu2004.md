@@ -96,16 +96,39 @@ python tools/test_inference_worker.py
 在现场已经完成 `install-project` 构建后，运行 `bash tools/ur10e_control.sh` 仅启动并检查驱动；
 运行 `bash tools/ur10e_control.sh --home` 执行用户已授权的候选 Home `[-180,-90,127,-123,270,0]` 度。
 入口自动加载 Foxy、`ur10e-project-foxy` venv、项目安装环境与 ROS_DOMAIN_ID=61。
-Home 前请将示教器速度滑块设为 5%。入口不更改滑块、不上电、不解除制动、不解锁停止。
+Home 接受大于 0、最高 100% 的有效速度倍率，不再要求滑块为 5%；入口不更改滑块、不上电、不解除制动、不解锁停止。规划的速度和加速度缩放仍各为 0.1。
 默认只检查，只有明确传入 `--home` 才会发送运动。
 
 入口拒绝同时存在其他驱动或 MoveIt 控制进程，且只停止本次创建的进程组。
 它核对示教器模式与安全状态、实际 URDF headless=1、RTDE 程序状态与速度、reverse 连接，
 以及 scaled 控制器 active，随后仅做 MoveIt 规划并逐点核对现场六轴限位、起点和终点。
-Home 执行使用 ExecuteTrajectory action，最长 600 秒；速度为零、程序停止、安全停止、
-关节超限或 15 秒没有至少 0.05 度关节进展时取消。组合速度缩放大于 10% 时停止。
+Home 执行使用 ExecuteTrajectory action，默认最长 600 秒；速度为零、程序停止、安全停止、
+关节超限或默认 15 秒没有至少 0.05 度关节进展时取消。有效速度倍率高于 100% 或非有限值时拒绝执行。
 Ctrl+C 会取消当前 action 并关闭本次启动的进程。全部日志保存在 `log-project/control-*`。
 只有 action 成功且实测全部关节距目标不超过 0.5 度时，才输出 Home 完成与 home-result.json。
 
 此入口没有增加桌面、支架、线缆的碰撞模型，不能将规划或限位检查当作完整物理安全验证；
 操作人仍需按此前授权的现场路径留意真实空间。机器人程序和 Home 的真机完成状态应以本次输出为准。
+
+
+## Home 速度与超时（2026-10-10 更新）
+
+`bash scripts/project home` 接受大于 0、最高 100% 的有效速度倍率；
+100% 表示按规划轨迹速度执行，不表示绕过机器人安全限值。
+规划速度与加速度缩放仍各为 0.1，不自动改动示教器倍率。
+
+```bash
+# 默认：执行总超时 600 秒，无进展超时 15 秒
+bash scripts/project home
+# 显式设置（秒），两者必须为有限正数，停滞超时不能超过执行总超时
+bash scripts/project home --execution-timeout 600 --stall-timeout 15
+```
+
+执行前在 `/moveit_simple_controller_manager` 显式设置并回读
+`trajectory_execution.execution_duration_monitoring=false`，处理 Foxy 的启动覆盖未生效问题。
+参数服务缺失、拒绝设置或回读不符时停止，不发送轨迹。
+不再以名义时长约 6 秒判断低速轨迹超时；入口仍负责有限执行时间、停滞取消、
+程序/安全/关节状态和最终到位检查。外层会话看门狗随执行超时增加 180 秒，
+中断后留 20 秒清理；不会让自定义执行超时受旧固定 720 秒限制。
+执行中每 2 秒报告耗时、有效速度倍率与距 Home 最大关节误差。
+该改动须现场验收，离线通过不等于真机 Home 已完成。

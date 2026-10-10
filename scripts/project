@@ -20,6 +20,7 @@ Usage: ./scripts/project COMMAND [options]
   demo            Bounded harvesting; requires verified calibration and enablement
   robot-check     Supervised arm status check (starts its own driver)
   home            Supervised Home movement (starts its own driver)
+Home options: --execution-timeout SECONDS (600) --stall-timeout SECONDS (15)
 Launch options: motion_enabled:=true/false rviz:=true/false
 Environment: HARVEST_PROFILE, HARVEST_CHECK_PYTHON, UR10E_FOXY_VENV, ROS_DOMAIN_ID (default 61)
 See docs/operations.md for the test order and hardware acceptance criteria.
@@ -37,9 +38,8 @@ HELP
     exec ros2 launch harvesting_bringup system.launch.py "profile:=$profile" "mode:=$command" "$@"
     ;;
   robot-check|home)
-    if (( $# )); then echo 'robot-check/home accept no extra arguments' >&2; exit 2; fi
-    if [[ "$command" == home ]]; then exec bash tools/ur10e_control.sh --home; fi
-    exec bash tools/ur10e_control.sh
+    if [[ "$command" == home ]]; then exec bash tools/ur10e_control.sh --home "$@"; fi
+    exec bash tools/ur10e_control.sh "$@"
     ;;
   *) echo "Unknown command: $command; use ./scripts/project help" >&2; exit 2 ;;
 esac

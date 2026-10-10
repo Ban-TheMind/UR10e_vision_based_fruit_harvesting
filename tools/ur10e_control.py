@@ -30,7 +30,7 @@ def check_angles(radians):
     return angles
 
 
-def check_trajectory(trajectory, actual):
+def check_trajectory(trajectory, actual, execution_timeout=600.):
     joint = trajectory.joint_trajectory
     if joint.joint_names != JOINTS or not joint.points:
         raise RuntimeError("规划轨迹关节顺序错误或为空")
@@ -46,7 +46,7 @@ def check_trajectory(trajectory, actual):
         for values in (point.velocities, point.accelerations):
             if values and (len(values) != 6 or not all(math.isfinite(v) for v in values)):
                 raise RuntimeError("轨迹速度或加速度无效")
-    if last_time <= 0 or last_time > 600:
+    if last_time <= 0 or last_time > execution_timeout:
         raise RuntimeError("轨迹时长无效或超过执行上限")
     if max(abs(a - b) for a, b in zip(joint.points[0].positions, actual)) > 0.01:
         raise RuntimeError("规划起点与真机当前角度不一致")
@@ -83,7 +83,7 @@ def robot_state(receiver):
             "q": list(receiver.getActualQ())}
 
 
-def check_running(state, low_speed=False):
+def check_running(state):
     if state["protective"] or state["emergency"]:
         raise RuntimeError("保护停止或急停；程序不会自动解锁")
     if state["runtime_state"] != 2:
@@ -91,8 +91,8 @@ def check_running(state, low_speed=False):
     scaling = state["speed_scaling"] * state["target_fraction"]
     if not math.isfinite(scaling) or scaling <= 0:
         raise RuntimeError("机器人速度缩放为零或无效")
-    if low_speed and scaling > 0.10 + 1e-6:
-        raise RuntimeError("请将示教器速度滑块设为 5%，当前组合速度缩放={:.3f}".format(scaling))
+    if scaling > 1.0 + 1e-6:
+        raise RuntimeError("机器人有效速度倍率超过 100%: {:.3f}".format(scaling))
     check_angles(state["q"])
 
 
@@ -118,10 +118,63 @@ def wait_future(node, future, seconds):
     return future.result()
 
 
-def main():
+def positive_seconds(value):
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("超时必须为有限正数（秒）")
+    return seconds
+
+
+def parse_options(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--home", action="store_true", help="执行已授权 Home；默认只检查")
-    args = parser.parse_args()
+    parser.add_argument("--home", action="store_true", help="执行 Home；默认只检查")
+    parser.add_argument("--execution-timeout", type=positive_seconds, default=600.,
+                        help="执行总超时，秒，默认 600")
+    parser.add_argument("--stall-timeout", type=positive_seconds, default=15.,
+                        help="无关节进展超时，秒，默认 15")
+    parser.add_argument("--print-session-timeout", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    if args.stall_timeout > args.execution_timeout:
+        parser.error("停滞超时不能超过执行总超时")
+    return args
+
+
+def configure_execution_monitoring(node):
+    # Foxy can expose the launch override while retaining its default internally.
+    # Set it after initialization to invoke the actual manager's callback.
+    from rcl_interfaces.srv import SetParameters, GetParameters
+    from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
+    base = "/moveit_simple_controller_manager/"
+    setter = node.create_client(SetParameters, base + "set_parameters")
+    getter = node.create_client(GetParameters, base + "get_parameters")
+    try:
+        if not setter.wait_for_service(timeout_sec=8) or not getter.wait_for_service(timeout_sec=8):
+            raise RuntimeError("MoveIt 时长监控参数服务未就绪；不发送运动")
+        name = "trajectory_execution.execution_duration_monitoring"
+        request = SetParameters.Request()
+        request.parameters = [Parameter(name=name, value=ParameterValue(
+            type=ParameterType.PARAMETER_BOOL, bool_value=False))]
+        response = wait_future(node, setter.call_async(request), 5)
+        if response is None or len(response.results) != 1 or not response.results[0].successful:
+            raise RuntimeError("MoveIt 拒绝关闭名义时长监控；不发送运动")
+        request = GetParameters.Request()
+        request.names = [name]
+        response = wait_future(node, getter.call_async(request), 5)
+        if (response is None or len(response.values) != 1 or
+                response.values[0].type != ParameterType.PARAMETER_BOOL or
+                response.values[0].bool_value):
+            raise RuntimeError("MoveIt 名义时长监控核验失败；不发送运动")
+        print("MoveIt 名义时长监控已显式关闭并回读核验", flush=True)
+    finally:
+        node.destroy_client(setter)
+        node.destroy_client(getter)
+
+
+def main():
+    args = parse_options()
+    if args.print_session_timeout:
+        print(math.ceil(args.execution_timeout + 180))
+        return
     import rclpy
     from rclpy.action import ActionClient
     from rtde_receive import RTDEReceiveInterface
@@ -178,7 +231,7 @@ def main():
                 raise RuntimeError("驱动退出，请看本次 driver.log")
             try:
                 state = robot_state(receiver)
-                check_running(state, low_speed=args.home)
+                check_running(state)
                 response = wait_future(node, service.call_async(ListControllers.Request()), 3)
                 if not any(c.name == "scaled_joint_trajectory_controller" and c.state == "active"
                            for c in response.controller):
@@ -207,6 +260,9 @@ def main():
         clients.extend([planning, execution])
         if not planning.wait_for_server(timeout_sec=25) or not execution.wait_for_server(timeout_sec=10):
             raise RuntimeError("MoveIt action 未就绪，请看本次 moveit.log")
+        configure_execution_monitoring(node)
+        print("执行总超时 {} 秒；无进展超时 {} 秒".format(
+            args.execution_timeout, args.stall_timeout), flush=True)
         goal = MoveGroup.Goal()
         goal.request.group_name = "ur_manipulator"
         goal.request.num_planning_attempts = 3
@@ -236,8 +292,8 @@ def main():
             raise RuntimeError("Home 规划失败，MoveIt code=" + str(planned.result.error_code.val))
         dashboard()
         state = robot_state(receiver)
-        check_running(state, low_speed=True)
-        duration = check_trajectory(planned.result.planned_trajectory, state["q"])
+        check_running(state)
+        duration = check_trajectory(planned.result.planned_trajectory, state["q"], args.execution_timeout)
         print("规划已核对全部轨迹点现场限位，名义时长 {:.2f} 秒；开始执行".format(duration), flush=True)
         execute = ExecuteTrajectory.Goal()
         execute.trajectory = planned.result.planned_trajectory
@@ -247,7 +303,8 @@ def main():
         if not active.accepted:
             raise RuntimeError("执行请求被拒绝")
         result_future = active.get_result_async()
-        deadline = time.monotonic() + 600
+        execution_started = time.monotonic()
+        deadline = execution_started + args.execution_timeout
         progress_time = time.monotonic()
         progress_q = state["q"]
         report = 0.
@@ -255,18 +312,19 @@ def main():
             rclpy.spin_once(node, timeout_sec=0.1)
             now = time.monotonic()
             if now >= deadline:
-                raise RuntimeError("Home 执行超过 600 秒，取消")
+                raise RuntimeError("Home 执行超过 {} 秒，取消".format(args.execution_timeout))
             if driver.poll() is not None or moveit.poll() is not None:
                 raise RuntimeError("驱动或 MoveIt 退出，取消")
             state = robot_state(receiver)
-            check_running(state, low_speed=True)
+            check_running(state)
             if max(abs(a - b) for a, b in zip(state["q"], progress_q)) >= math.radians(0.05):
                 progress_q, progress_time = state["q"], now
-            if now - progress_time > 15:
-                raise RuntimeError("15 秒无关节进展，取消 Home")
-            if now - report > 10:
+            if now - progress_time > args.stall_timeout:
+                raise RuntimeError("{} 秒无关节进展，取消 Home".format(args.stall_timeout))
+            if now - report > 2:
                 angles = check_angles(state["q"])
-                print("执行中，距 Home 最大误差 {:.2f} 度".format(
+                print("执行 {:.1f} 秒，有效速度倍率 {:.1%}，距 Home 最大误差 {:.2f} 度".format(
+                    now - execution_started, state["speed_scaling"] * state["target_fraction"],
                     max(abs(a - b) for a, b in zip(angles, HOME))), flush=True)
                 report = now
         finished = result_future.result()
