@@ -109,7 +109,7 @@ class HarvestTimeoutTests(unittest.TestCase):
 
     def test_launch_delivers_override_to_actual_harvesting_node(self):
         sys.path.insert(0, str(ROOT / 'tests'))
-        from test_project_workflow import Action, Configuration, LAUNCH
+        from test_project_workflow import Action, Configuration, LAUNCH, PROFILE
         modules = {name: types.ModuleType(name) for name in (
             'ament_index_python', 'ament_index_python.packages', 'launch', 'launch.actions',
             'launch.launch_description_sources', 'launch.substitutions', 'launch_ros', 'launch_ros.actions')}
@@ -122,12 +122,16 @@ class HarvestTimeoutTests(unittest.TestCase):
         modules['launch_ros.actions'].Node = Action
         with patch.dict(sys.modules, modules):
             launch = load('timeout_launch', LAUNCH / 'system.launch.py')
+            launch.deployment.load_profile = lambda _: PROFILE
             for override, expected in (('', 600.0), ('90', 90.0)):
                 actions = launch.compose(dict(profile=str(ROOT / 'src/harvesting_bringup/config/site.json'),
                                               mode='demo', motion_enabled='true', rviz='false',
                                               execution_timeout=override))
                 node = next(action for action in actions if getattr(action, 'package', '') == 'demo_package')
                 self.assertEqual(node.parameters[0]['execution_timeout'], expected)
+                self.assertEqual(node.parameters[0]['grasp_strategy'], 'tabletop')
+                for name, value in PROFILE['tabletop'].items():
+                    self.assertEqual(node.parameters[0][name], value)
 
 if __name__ == '__main__':
     unittest.main()

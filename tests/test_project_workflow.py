@@ -22,6 +22,9 @@ def load(name, path):
 
 deployment = load('deployment_test', LAUNCH / 'deployment.py')
 PROFILE = deployment.load_profile(ROOT / 'src/harvesting_bringup/config/site.json')
+# Synthetic test geometry, never written to the field profile.
+PROFILE['tabletop'] = dict(grasp_height_m=0.25, tool_rpy_rad=[0.0, 3.14, 0.0],
+                           xy_offset_m=[0.0, 0.0], clearance_m=0.12)
 
 class Action:
     def __init__(self, *args, **kwargs):
@@ -209,6 +212,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(events[-2], ('grip', 0))
             # Site mode must skip the inherited scan and use joint-mode drop.
             node.__dict__.update(PROFILE['task'])
+            node.grasp_strategy = 'side'
             node.settle_seconds = 0.0
             node.run_detection_at_pos = lambda *args: self.fail('Unexpected inherited scan')
             events.clear()

@@ -21,6 +21,31 @@ def execution_timeout(profile, override=''):
         raise ValueError('execution_timeout must be finite positive seconds')
     return seconds
 
+def tabletop_parameters(profile, required=False):
+    if profile['task'].get('grasp_strategy', 'side') != 'tabletop':
+        return {}
+    geometry = profile.get('tabletop', {})
+    missing = [name for name in ('grasp_height_m', 'tool_rpy_rad', 'xy_offset_m')
+               if geometry.get(name) is None]
+    if required and missing:
+        raise ValueError('桌面抓取参数尚未填写: ' + ', '.join(missing) +
+                         '；到现场后填写 site.json 的 tabletop；不是标定确认开关')
+    result = {}
+    for name in ('grasp_height_m', 'tool_rpy_rad', 'xy_offset_m', 'clearance_m'):
+        value = geometry.get(name, 0.12 if name == 'clearance_m' else None)
+        if value is None:
+            continue
+        size = {'tool_rpy_rad': 3, 'xy_offset_m': 2}.get(name)
+        values = value if size else [value]
+        if (size and (not isinstance(value, list) or len(value) != size)):
+            raise ValueError('Invalid tabletop ' + name)
+        if not all(type(x) in (int, float) and math.isfinite(x) for x in values):
+            raise ValueError('Tabletop ' + name + ' requires finite numbers')
+        if name == 'clearance_m' and value <= 0:
+            raise ValueError('Tabletop clearance_m must be positive')
+        result[name] = [float(x) for x in value] if size else float(value)
+    return result
+
 def load_profile(path):
     with open(path, encoding='utf-8') as stream:
         profile = json.load(stream)
@@ -50,6 +75,9 @@ def load_profile(path):
         if len(drop) != 6 or not all(type(x) in (int, float) and math.isfinite(x) for x in drop):
             raise ValueError('Drop joints require six finite radians in standard UR order')
     execution_timeout(profile)
+    if task.get('grasp_strategy', 'side') not in ('side', 'tabletop'):
+        raise ValueError('grasp_strategy must be side or tabletop')
+    tabletop_parameters(profile)
     return profile
 
 def build_plan(profile, mode, motion_enabled=False):
@@ -60,6 +88,8 @@ def build_plan(profile, mode, motion_enabled=False):
         raise ValueError('fake mode is isolated and does not enable physical actuators')
     if mode == 'demo' and not enabled:
         raise ValueError('demo requires motion_enabled:=true')
+    if mode == 'demo':
+        tabletop_parameters(profile, required=True)
     # fake deliberately contains no camera, serial server or autonomous routine.
     return {'robot': mode in ('fake', 'robot', 'all', 'demo'),
             'camera': mode in ('camera', 'all', 'demo'),

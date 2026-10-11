@@ -37,6 +37,13 @@
       4.702789669498721,
       -0.005759586531581287
     ],
-    "return_to_scan_after_drop": false
+    "return_to_scan_after_drop": false,
+    "grasp_strategy": "tabletop"
+  },
+  "tabletop": {
+    "grasp_height_m": null,
+    "tool_rpy_rad": null,
+    "xy_offset_m": null,
+    "clearance_m": 0.12
   }
 }

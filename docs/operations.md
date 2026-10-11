@@ -203,3 +203,70 @@ bash scripts/project demo motion_enabled:=true rviz:=false execution_timeout:=60
 启动时应出现 `MoveIt 每段动作执行上限 600.0 秒；名义时长倍率 0；参数已回读核验`。
 上述最后一条会真实执行完整采摘流程。参数服务拒绝、未就绪或回读不一致时，首次运动不会发送。
 离线检查验证参数交互和超时传递，实际 Foxy 执行仍需现场验证。
+
+
+## 桌面单苹果流程（2026-10-11）
+
+现场配置现在选择 `task.grasp_strategy="tabletop"`。仍使用同一个 `project demo` 一键入口：
+Home → 相机检测 → 张爪 → 苹果上方目标 → 抓取目标 → 闭爪 → 返回上方目标 → 示教关节投放点 → 松爪。
+每次启动只取本次检测的第一个有效苹果，完成后结束；不遍历所有苹果，也不重复抓取轮数。
+原侧向策略保留在代码中，但本现场配置不再使用原 `pick_offset` 和 `pick_orientation`。
+
+按本次选择，全部运动使用现有 MoveIt/OMPL：`joint` 或 `cartesian` 目标。
+没有增加 `computeCartesianPath`、强制直线插值或新规划服务。
+上方点与抓取点的 XY、方向相同，Z 相差 `clearance_m`；这限定了目标点，**不保证中间路径竖直**。
+本次也没有增加点云、Octomap、静态桌面或多任务功能。现有自碰撞检查和 UR 安全设置保留。
+因此成功规划不等于已经验证与现场桌面、支架之间的间隙，到现场仍需观察实际接近与撤离轨迹。
+
+### 到现场后填写的参数
+
+编辑 `src/harvesting_bringup/config/site.json` 顶层 `tabletop`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `grasp_height_m` | 正确抓取时规划末端 `tool0` 在 `base_link` 中的 Z，单位米；不是苹果的深度或桌面高度 |
+| `tool_rpy_rad` | 同一姿态的 roll/pitch/yaw 三个弧度值，使实际夹爪适合从上方抓取 |
+| `xy_offset_m` | 同一参考苹果的 `tool0.XY - camera_detected.XY`，两个米值，用于固定朝向下的抓取中心补偿 |
+| `clearance_m` | 上方点比抓取点高多少米，默认 0.12，可按现场调整 |
+
+前三项目前为 `null`，表示尚无现场测量值；不是零偏移，也没有额外的“标定已确认”开关。
+未填写时，`project demo` 在启动设备前提示缺少具体字段；`home`、`robot`、`camera-check`、`all` 仍可使用。
+这里不能用原作者的 `z+0.19` 或侧向偏移代替未知尺寸。
+
+获取参考：保持相机固定，将实际夹爪手动摆到一个苹果的正确抓取位置；记录机械臂关节角，
+用正在运行的 MoveIt `/compute_fk` 获取该关节状态下 `tool0` 在 `base_link` 的位姿，
+将四元数转为 RPY；再检测同一苹果的 `base_link` 坐标，计算 XY 差值。
+相机给出的是可见果实表面的投影点，不是精确果实中心；固定示教高度适用于同一桌面、大小接近的苹果。
+若相机或工具安装发生移动，需要重新核对参考。
+不要直接抄示教器的刀具位姿：它可能使用不同基坐标、不同活动 TCP，且 Rx/Ry/Rz 是旋转向量而非 RPY。
+也不要将 FK 的 `tool0` 位姿误当成夹爪中心；上述 XY 补偿与示教 Z 正是用于对应两者。
+
+### 夹爪默认行为
+
+保留当前 Robotiq 2F-85：张开目标 85 mm、闭合目标 0 mm、`gripper_force=40` 原始值（0..255，非牛顿）。
+宽度是目标；物体接触检测可以使夹爪在到达闭合目标前停止。
+程序闭合后会打印服务反馈 `object_state`：2 表示闭合时接触物体，3 表示到达请求位置、没有检测到物体。
+服务 `success=true` 表示动作完成，并不等同于苹果可靠夹持；本次不新增夹持识别或外部力阈值控制。
+原作者使用 RG2 HTTP `set_width` 接口，给定宽度与力度；Python 不读取力反馈来决定何时停止，HTTP 200 即视为成功。
+我们使用 Robotiq 串口状态反馈，动作完成的判断不同；相似苹果大小不能证明两种装置的力度单位可以照搬。
+抬升或投放失败时流程立即退出，不执行后面的自动松爪；没有自动复位或重试。
+
+### 同步与运行
+
+```bash
+git pull --ff-only origin main
+bash scripts/project build --packages-select demo_package harvesting_bringup
+```
+
+参数填写完成后，现场停止其他联合启动进程再执行真实单苹果抓取：
+
+```bash
+bash scripts/project demo motion_enabled:=true rviz:=false execution_timeout:=600
+```
+
+现场参数修改也应同步到 Windows 本地和仓库，避免下次拉取时丢失或出现冲突。
+离线测试覆盖单苹果选择、相机 XY/示教 Z 的组合、动作顺序、撤离先于投放以及失败不继续松爪。
+当前修改没有在实际 Foxy/机械臂环境完成桌面抓取验证。
+
+后续才考虑点云：RViz 的 PointCloud2 用于显示；用于避障还需要正确的相机 TF 和 MoveIt Octomap 更新器。
+只打开 RViz 点云显示不会自动增加避障能力，此阶段不需要配置它。

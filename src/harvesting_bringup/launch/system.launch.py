@@ -50,6 +50,7 @@ def compose(context):
         parameters = dict(profile['task'], motion_enabled=True,
                           execution_timeout=deployment.execution_timeout(
                               profile, LaunchConfiguration('execution_timeout').perform(context)))
+        parameters.update(deployment.tabletop_parameters(profile, required=True))
         actions.append(Node(package='demo_package', executable='vertical_fruit_gripping_demo',
                             output='screen', parameters=[parameters]))
     return actions

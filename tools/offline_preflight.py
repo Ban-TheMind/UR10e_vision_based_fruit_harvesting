@@ -108,6 +108,7 @@ def main():
     run("Foxy hardcoded headless compatibility", [sys.executable, "tools/test_foxy_control_config.py"])
     run("planner model sharing", [sys.executable, "tools/test_planner_model_config.py"])
     run("harvesting execution timeout", [sys.executable, "tools/test_harvest_timeout.py"])
+    run("single-apple tabletop workflow", [sys.executable, "tools/test_tabletop_workflow.py"])
     check_model(args.require_model)
     run("camera detection diagnostics and ownership", [sys.executable, "tools/test_camera_diagnostics.py"])
     run("camera geometry and depth units", [sys.executable, "tools/test_offline_geometry.py"])
