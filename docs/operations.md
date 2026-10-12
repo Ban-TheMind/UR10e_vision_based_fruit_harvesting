@@ -2,6 +2,74 @@
 
 本手册面向实验操作者。对外说明保留在根目录 `README.md`；历史 README 中的 Humble、原夹爪和启动方式不代表当前现场部署。当前维护版本是用户 fork 的 `main`，运行目标为 Ubuntu 20.04 / ROS2 Foxy；其他电脑负责编辑、同步和离线检查。
 
+## 2026-10-12 现场成功：单苹果抓取与投放
+
+操作者确认完整物理链路已经跑通：Home 扫描、一次视觉检测、上方接近、到示教高度、
+夹爪闭合、撤离、到关节投放姿态、松爪结束。首次成功未录像，后续录像待补。
+本次使用经验 `xy_offset_m=[-0.07, 0.0]`。师兄建议重新标定，目前不将其记录为标定完成。
+
+上方接近日志 `log-project/above-check-20261012-160108-165960/result.json`：
+目标 tool0 XYZ=`[-0.7340582044670123, -0.3732352193280794, 0.3042545279649661]` m；
+实际 tool0 XYZ=`[-0.7338215864058616, -0.3729247047849191, 0.3045129813748697]` m；
+位置误差 0.4681939272 mm、方向误差 0.0398049791°。这是发送目标的执行误差，
+不是视觉定位或抓取中心的绝对精度。模型夹爪中心只是计算值，现场对齐另由操作者观察确认。
+
+### 生成本次成功配置并复现
+
+在项目根目录执行。先在旧 all/robot/camera 窗口 Ctrl+C，避免重复启动。
+现场原先成功使用 `/tmp/ur10e-tabletop-trial.json`；下面将同一参数保存到项目忽略的
+`log-project/tabletop-trial-profile.json`，方便重启后复现。它不会修改已提交的默认配置。
+
+```bash
+cd ~/Desktop/robot_learning/UR10e_vision_based_fruit_harvesting
+python3 - <<'PY'
+import json
+from pathlib import Path
+profile = json.loads(Path('src/harvesting_bringup/config/site.json').read_text())
+profile['tabletop'].update(
+    grasp_height_m=0.18425452796496608,
+    tool_rpy_rad=[3.0721570831557177, -0.004518726175556632, 0.14199025134474497],
+    xy_offset_m=[-0.07, 0.0],
+    tool_offset_m=[0.0, 0.0, 0.1628],
+    clearance_m=0.12)
+profile['task']['max_cycles'] = 1
+path = Path('log-project/tabletop-trial-profile.json')
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(profile, indent=2))
+print(path.resolve())
+PY
+
+HARVEST_PROFILE="$PWD/log-project/tabletop-trial-profile.json" \
+bash scripts/project demo motion_enabled:=true rviz:=false
+```
+
+该命令会真实执行下降、闭爪及投放。投放位置应与之前示教一致并空出；录像应在运行前开启。
+每次重新检测苹果 XY；固定的是高度、方向、残余补偿和投放姿态。苹果先保持已成功的位置，
+换位置时先用上方检查验证，不能假设 −70 mm 对整个桌面都有效。
+
+### 移动苹果后的上方检查
+
+终端 A 启动 `bash scripts/project all motion_enabled:=true rviz:=false`，
+终端 B 在项目根目录执行：
+
+```bash
+bash scripts/project above-check --execute \
+  --height 0.18425452796496608 \
+  --rpy 3.0721570831557177 -0.004518726175556632 0.14199025134474497 \
+  --xy-offset -0.07 0.0
+```
+
+上方检查会先 Home，然后检测新位置，只到上方，不闭爪。执行结束后保持机械臂和苹果不动，
+对照图像与 `result.json`。准备完整 demo 时先停止 all。
+
+### 当前未解决项
+
+- 当前相机安装外参需重新标定；同源矩阵并不等于当前安装误差已消除。
+- 单一位置的经验补偿尚未验证跨位置适用性；不同苹果大小、桌面高度需重新核对抓取几何。
+- 相机取的是框中心附近的深度表面点，不是真实果实几何中心。
+- 驱动退出异常、相机参数警告、绿色偏色及完整相机异常栈仍待单独诊断。
+- 点云/Octomap 避障、多目标和持续视觉反馈未实现，不属于本次成功范围。
+
 ## 统一入口
 
 在项目根目录使用 `./scripts/project`，不带参数会显示帮助，不启动设备。
@@ -14,6 +82,8 @@
 | `./scripts/project fake` | 假机械臂、MoveIt、规划服务 | 不启动真实相机或夹爪；不支持物理执行开关 |
 | `./scripts/project robot` | 真实 UR 驱动、MoveIt、规划服务 | 连接机械臂；服务默认只允许规划 |
 | `./scripts/project camera` | 固定 RealSense、视觉服务 | 连接相机，不启动机械臂和夹爪 |
+| `./scripts/project camera-check` | 相机检测、保存图像后退出 | 不启动机械臂或夹爪 |
+| `./scripts/project above-check --execute ...` | 连接已有 all，Home 后到补偿的上方目标并立即读回 | 会运动；不下降、不操作夹爪 |
 | `./scripts/project gripper` | 夹爪服务 | 默认拒绝串口命令，不自动激活 |
 | `./scripts/project all` | 三个子系统联合启动 | 无自动采摘，运动和夹爪命令默认关闭 |
 | `./scripts/project demo motion_enabled:=true` | 完整采摘流程，默认 1 轮 | 明确开启后会发送机械臂和夹爪动作 |
@@ -28,7 +98,7 @@
 
 ## 配置与环境
 
-联合启动配置在 `src/harvesting_bringup/config/site.json`，采用 JSON，离线解析不依赖 PyYAML。记录机器人 IP/headless、相机序列号和推理 Python、串口参数及流程参数。现场配置的扫描姿态采用已实测 Home，投放姿态采用操作者 2026-10-10 示教的关节位置。抓取偏移和方向仍继承历史示例，尚需核对相机外参、TCP 和抓取几何；默认 `calibration_verified=false`。
+联合启动配置在 `src/harvesting_bringup/config/site.json`，采用 JSON，离线解析不依赖 PyYAML。记录机器人 IP/headless、相机序列号和推理 Python、串口参数及流程参数。现场配置的扫描姿态采用已实测 Home，投放姿态采用操作者 2026-10-10 示教的关节位置。当前桌面策略采用 FK 示教高度与方向、显式工具变换及独立试验配置；2026-10-12 已完成固定补偿下的抓取投放。相机外参仍需重新标定，默认 `calibration_verified=false`。
 
 关节数组统一为 `[shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3]`，单位弧度。笛卡尔位置为米，姿态为弧度，规划参考系为 `base_link`；夹爪宽度为标称毫米，力为 0–255 原始编码。
 
@@ -226,8 +296,9 @@ Home → 相机检测 → 张爪 → 苹果上方目标 → 抓取目标 → 闭
 | --- | --- |
 | `grasp_height_m` | 正确抓取时规划末端 `tool0` 在 `base_link` 中的 Z，单位米；不是苹果的深度或桌面高度 |
 | `tool_rpy_rad` | 同一姿态的 roll/pitch/yaw 三个弧度值，使实际夹爪适合从上方抓取 |
-| `xy_offset_m` | 同一参考苹果的 `tool0.XY - camera_detected.XY`，两个米值，用于固定朝向下的抓取中心补偿 |
+| `xy_offset_m` | 剩余抓取中心 XY 补偿，两个米值；参考为 `tool0.XY + (R*tool_offset_m).XY - camera_detected.XY`，不重复包含工具偏移 |
 | `clearance_m` | 上方点比抓取点高多少米，默认 0.12，可按现场调整 |
+| `tool_offset_m` | tool0 到模型夹爪中心的工具坐标 XYZ，默认 `[0, 0, 0.1628]` m |
 
 前三项目前为 `null`，表示尚无现场测量值；不是零偏移，也没有额外的“标定已确认”开关。
 未填写时，`project demo` 在启动设备前提示缺少具体字段；`home`、`robot`、`camera-check`、`all` 仍可使用。
@@ -235,11 +306,11 @@ Home → 相机检测 → 张爪 → 苹果上方目标 → 抓取目标 → 闭
 
 获取参考：保持相机固定，将实际夹爪手动摆到一个苹果的正确抓取位置；记录机械臂关节角，
 用正在运行的 MoveIt `/compute_fk` 获取该关节状态下 `tool0` 在 `base_link` 的位姿，
-将四元数转为 RPY；再检测同一苹果的 `base_link` 坐标，计算 XY 差值。
+将四元数转为 RPY；先加上旋转后的工具偏移得到模型夹爪中心，再与同一苹果的检测 XY 比较，计算剩余补偿。
 相机给出的是可见果实表面的投影点，不是精确果实中心；固定示教高度适用于同一桌面、大小接近的苹果。
 若相机或工具安装发生移动，需要重新核对参考。
 不要直接抄示教器的刀具位姿：它可能使用不同基坐标、不同活动 TCP，且 Rx/Ry/Rz 是旋转向量而非 RPY。
-也不要将 FK 的 `tool0` 位姿误当成夹爪中心；上述 XY 补偿与示教 Z 正是用于对应两者。
+也不要将 FK 的 `tool0` 位姿误当成夹爪中心；工具变换与残余 XY 补偿须分别计算。
 
 ### 夹爪默认行为
 
@@ -266,7 +337,7 @@ bash scripts/project demo motion_enabled:=true rviz:=false execution_timeout:=60
 
 现场参数修改也应同步到 Windows 本地和仓库，避免下次拉取时丢失或出现冲突。
 离线测试覆盖单苹果选择、相机 XY/示教 Z 的组合、动作顺序、撤离先于投放以及失败不继续松爪。
-当前修改没有在实际 Foxy/机械臂环境完成桌面抓取验证。
+2026-10-12 操作者已确认单苹果桌面抓取投放成功；参数及验证边界见下节。固定补偿不能代表完整标定验收。
 
 后续才考虑点云：RViz 的 PointCloud2 用于显示；用于避障还需要正确的相机 TF 和 MoveIt Octomap 更新器。
 只打开 RViz 点云显示不会自动增加避障能力，此阶段不需要配置它。
