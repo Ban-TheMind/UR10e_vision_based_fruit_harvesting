@@ -14,6 +14,7 @@ class DemoRoutine(RoutineBase):
             'grasp_height_m': math.nan,
             'tool_rpy_rad': [0.0, 0.0, 0.0],
             'xy_offset_m': [0.0, 0.0],
+            'tool_offset_m': [0.0, 0.0, 0.1628],
             'clearance_m': 0.12,
             'bird_eye_position': [0.54, 0.174, 0.9, -1.56, 0.0, -1.571],
             'birds_eye_joint_pos': [0.0, -1.9, 1.2, -2.0, -1.57, 0.0],
@@ -75,7 +76,7 @@ class DemoRoutine(RoutineBase):
         # Validate before the first movement, including direct ROS invocation.
         from types import SimpleNamespace
         tabletop_poses(SimpleNamespace(x=0.0, y=0.0, z=0.0), self.grasp_height_m,
-                       self.tool_rpy_rad, self.xy_offset_m, self.clearance_m)
+                       self.tool_rpy_rad, self.xy_offset_m, self.clearance_m, self.tool_offset_m)
         self.send_movement_request(self.birds_eye_joint_pos, 'joint', 'NONE')
         time.sleep(self.settle_seconds)
         apples = self.run_detection_at_curr_pos()
@@ -84,7 +85,7 @@ class DemoRoutine(RoutineBase):
             return
         # One request, one apple, one completed pick/place cycle.
         above, pick = tabletop_poses(apples[0], self.grasp_height_m,
-                                    self.tool_rpy_rad, self.xy_offset_m, self.clearance_m)
+                                    self.tool_rpy_rad, self.xy_offset_m, self.clearance_m, self.tool_offset_m)
         self.get_logger().info('Tabletop one apple: above={}, pick={}; camera Z not used for grasp height'.format(above, pick))
         self.send_gripper_request(self.gripper_open_width)
         # Both segments use existing MoveIt/OMPL; these are pose targets,

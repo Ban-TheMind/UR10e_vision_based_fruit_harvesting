@@ -270,3 +270,48 @@ bash scripts/project demo motion_enabled:=true rviz:=false execution_timeout:=60
 
 后续才考虑点云：RViz 的 PointCloud2 用于显示；用于避障还需要正确的相机 TF 和 MoveIt Octomap 更新器。
 只打开 RViz 点云显示不会自动增加避障能力，此阶段不需要配置它。
+
+
+## 2026-10-12：夹爪中心与 tool0 变换、上方接近核验
+
+师兄现场代码 `robosuite-sim2real-reach-0908/vision_pick_place/visionpickplace/arm/ur/ur.py`
+使用 `GRIPPER_OFFSET=0.1628`，沿末端自身 +Z 轴定义抓取中心。
+桌面策略现使用同一几何定义：`p_center = p_tool0 + R_base_link_tool0 * tool_offset_m`。
+`tabletop.tool_offset_m` 默认 `[0.0, 0.0, 0.1628]`（米）；这是工具几何，不是经验 XY 补偿。
+`xy_offset_m` 是应用在相机目标上的剩余抓取中心补偿，不能重复包含上述工具偏移。
+
+**`grasp_height_m` 保持为示教/FK 得到的 tool0 在 base_link 中的 Z。**
+程序先根据工具方向恢复抓取中心 Z，再反算完整 tool0 目标，因此不会对已经示教的
+tool0 高度再加减 162.8 mm。相机 Z 仍不用来指定桌面抓取高度。
+这次现场示教 FK 参考为 tool0 Z=0.18425452796496608 m、
+RPY=`[3.0721570831557177, -0.004518726175556632, 0.14199025134474497]`。
+对应工具偏移在 base_link 中约为 `[+0.002325, -0.011078, -0.162406]` m。
+内置桌面示教参数仍为空；上方试验通过显式参数使用该参考，不自动启用完整抓取。
+
+新增 `project above-check`，连接已有 `project all` 服务，不创建或停止驱动进程。
+不带 `--execute` 时仅在当前位置检测并规划；带该选项时先通过已有 MoveIt 服务
+移动到 Home，再检测一次苹果、规划并执行补偿后的上方目标。不下降、不调用夹爪。
+两个阶段均使用现有 MoveIt/OMPL，不增加直线规划。
+
+终端 A（先退出旧的 all/robot/camera 实例，再启动）：
+
+```bash
+cd ~/Desktop/robot_learning/UR10e_vision_based_fruit_harvesting
+git pull --ff-only origin main
+bash scripts/project build --packages-select demo_package harvesting_bringup
+bash scripts/project all motion_enabled:=true rviz:=false
+```
+
+终端 B（等待终端 A 的规划、相机服务就绪；苹果保持不动）：
+
+```bash
+cd ~/Desktop/robot_learning/UR10e_vision_based_fruit_harvesting
+bash scripts/project above-check --execute   --height 0.18425452796496608   --rpy 3.0721570831557177 -0.004518726175556632 0.14199025134474497
+```
+
+试验完成后立即以 RTDE **接收接口**读取关节角和控制器 TCP，并查询同一关节角的
+`base_link -> tool0` FK。记录发送目标、实际 tool0、模型推算的夹爪中心及位姿误差到
+`log-project/above-check-*/result.json`。后者只是工具模型的推算，不是实测抓取中心。
+位置误差超过 5 mm 或方向误差超过 1 度时报告未达到目标；无论是否通过都没有下一步下降。
+观察期间保持机械臂和苹果不动，先核对现场 XY 对齐。此修改没有更换相机外参、
+设置控制器 TCP 或写入未经测量的残余 XY 补偿。

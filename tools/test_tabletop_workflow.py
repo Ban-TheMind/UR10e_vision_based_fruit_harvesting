@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src/demo_package'))
-from demo_package.tabletop_geometry import tabletop_poses
+from demo_package.tabletop_geometry import tabletop_poses, gripper_center_to_tool0, rpy_rotation, rotate_offset
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -31,6 +31,34 @@ class TabletopTests(unittest.TestCase):
         apple.z = 1.5
         self.assertEqual(tabletop_poses(apple, 0.25, pick[3:], [0.01, -0.02], 0.12)[1], pick)
 
+    def test_taught_pose_gripper_center_round_trip(self):
+        orientation = [3.0721570831557177, -0.004518726175556632, 0.14199025134474497]
+        offset = [0.0, 0.0, 0.1628]
+        tool = [-0.567322135870823, -0.1743674544242675, 0.18425452796496608]
+        delta = rotate_offset(rpy_rotation(orientation), offset)
+        center = [tool[i]+delta[i] for i in range(3)]
+        recovered = gripper_center_to_tool0(center, orientation, offset)
+        for actual, expected in zip(recovered[:3], tool):
+            self.assertAlmostEqual(actual, expected, places=12)
+        apple = types.SimpleNamespace(x=center[0], y=center[1], z=99.0)
+        above, pick = tabletop_poses(apple, tool[2], orientation, [0, 0], 0.12, offset)
+        for actual, expected in zip(pick[:3], tool):
+            self.assertAlmostEqual(actual, expected, places=12)
+        self.assertAlmostEqual(above[2], tool[2]+0.12)
+        self.assertAlmostEqual(delta[0], 0.002324888453958365)
+        self.assertAlmostEqual(delta[1], -0.01107750687186796)
+
+    def test_horizontal_tool_and_zero_offset(self):
+        apple = types.SimpleNamespace(x=0.5, y=0.2, z=0.01)
+        above, pick = tabletop_poses(apple, 0.3, [0, math.pi/2, 0], [0, 0], 0.12)
+        self.assertAlmostEqual(pick[0], 0.5-0.1628)
+        self.assertEqual(pick[2], 0.3)
+        self.assertAlmostEqual(above[2], 0.42)
+        _, pick = tabletop_poses(apple, 0.3, [0, math.pi/2, 0], [0, 0], 0.12, [0, 0, 0])
+        self.assertEqual(pick[:3], [0.5, 0.2, 0.3])
+        with self.assertRaises(ValueError):
+            gripper_center_to_tool0([0, 0, 0], [0, 0, 0], [0, 0, math.nan])
+
     def test_missing_field_geometry_blocks_only_harvesting(self):
         deployment = load('tabletop_deployment', ROOT / 'src/harvesting_bringup/launch/deployment.py')
         profile = deployment.load_profile(ROOT / 'src/harvesting_bringup/config/site.json')
@@ -42,7 +70,7 @@ class TabletopTests(unittest.TestCase):
         profile['tabletop'].update(grasp_height_m=-0.1, tool_rpy_rad=[0, math.pi, 0], xy_offset_m=[0, 0])
         self.assertTrue(deployment.build_plan(profile, 'demo', True)['routine'])
         for name, invalid in (('tool_rpy_rad', [0, 1]), ('xy_offset_m', [0, math.nan]),
-                              ('grasp_height_m', math.inf), ('clearance_m', 0)):
+                              ('grasp_height_m', math.inf), ('clearance_m', 0), ('tool_offset_m', [0, 0])):
             previous = profile['tabletop'][name]
             profile['tabletop'][name] = invalid
             with self.assertRaises(ValueError): deployment.tabletop_parameters(profile, required=True)
@@ -58,7 +86,7 @@ class TabletopTests(unittest.TestCase):
         node = DemoRoutine.__new__(DemoRoutine)
         node.__dict__.update(grasp_strategy='tabletop', grasp_height_m=0.25,
                              tool_rpy_rad=[0.0, math.pi, 0.0], xy_offset_m=[0.01, 0.02],
-                             clearance_m=0.12, birds_eye_joint_pos=[0.0]*6,
+                             clearance_m=0.12, tool_offset_m=[0.0, 0.0, 0.1628], birds_eye_joint_pos=[0.0]*6,
                              drop_joint_pos=[1.0]*6, drop_motion='joint',
                              gripper_open_width=85, gripper_close_width=0,
                              settle_seconds=0.0, grip_seconds=0.0,

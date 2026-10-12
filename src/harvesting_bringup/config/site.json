@@ -44,6 +44,11 @@
     "grasp_height_m": null,
     "tool_rpy_rad": null,
     "xy_offset_m": null,
-    "clearance_m": 0.12
+    "clearance_m": 0.12,
+    "tool_offset_m": [
+      0.0,
+      0.0,
+      0.1628
+    ]
   }
 }

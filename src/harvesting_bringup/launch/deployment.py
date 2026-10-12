@@ -31,11 +31,12 @@ def tabletop_parameters(profile, required=False):
         raise ValueError('桌面抓取参数尚未填写: ' + ', '.join(missing) +
                          '；到现场后填写 site.json 的 tabletop；不是标定确认开关')
     result = {}
-    for name in ('grasp_height_m', 'tool_rpy_rad', 'xy_offset_m', 'clearance_m'):
-        value = geometry.get(name, 0.12 if name == 'clearance_m' else None)
+    for name in ('grasp_height_m', 'tool_rpy_rad', 'xy_offset_m', 'clearance_m', 'tool_offset_m'):
+        defaults = {'clearance_m': 0.12, 'tool_offset_m': [0.0, 0.0, 0.1628]}
+        value = geometry.get(name, defaults.get(name))
         if value is None:
             continue
-        size = {'tool_rpy_rad': 3, 'xy_offset_m': 2}.get(name)
+        size = {'tool_rpy_rad': 3, 'xy_offset_m': 2, 'tool_offset_m': 3}.get(name)
         values = value if size else [value]
         if (size and (not isinstance(value, list) or len(value) != size)):
             raise ValueError('Invalid tabletop ' + name)
