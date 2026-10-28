@@ -15,6 +15,8 @@ Usage: ./scripts/project COMMAND [options]
   fake            Fake arm + MoveIt; no physical camera/gripper
   robot           Real arm + MoveIt; planning services only by default
   camera          RealSense + perception only
+  mapping         Real arm state + point cloud + MoveIt map; plan-only, no YOLO/gripper
+  mapping-check   Inspect live cloud/TF/map; optionally submit a plan-only target
   camera-check    One-terminal camera detection + snapshots; no arm/gripper
   above-check     Plan/execute one compensated above target on an existing all launch
   gripper         Gripper service only; commands disabled by default
@@ -34,7 +36,7 @@ HELP
     exec colcon --log-base log-project build --build-base build-project --install-base install-project --symlink-install "$@"
     ;;
   site-check) exec bash tools/foxy_site_preflight.sh "$@" ;;
-  fake|robot|camera|gripper|all|demo)
+  fake|robot|camera|gripper|all|demo|mapping)
     python3 scripts/check_profile.py "$profile" "$command" "$@"
     source scripts/ros_env.sh
     exec ros2 launch harvesting_bringup system.launch.py "profile:=$profile" "mode:=$command" "$@"
@@ -42,6 +44,10 @@ HELP
   above-check)
     source scripts/ros_env.sh
     exec python3 -u tools/tabletop_above_check.py "$@"
+    ;;
+  mapping-check)
+    source scripts/ros_env.sh
+    exec python3 -u tools/pointcloud_scene_check.py --profile "$profile" "$@"
     ;;
   camera-check)
     source scripts/ros_env.sh

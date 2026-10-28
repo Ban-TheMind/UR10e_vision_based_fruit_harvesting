@@ -1,0 +1,5 @@
+# Foxy plugin declaration only; harvesting_config supplies every runtime setting.
+sensors:
+  - harvesting_pointcloud
+harvesting_pointcloud:
+  sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater

@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src/harvesting_config'))
 SOURCE = ROOT / 'src/end_effector_description/launch/foxy_moveit.launch.py'
 
 class Action:
@@ -40,6 +41,9 @@ class PlannerModelTests(unittest.TestCase):
             self.launch = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(self.launch)
         configs = {
+            'config/sensors_3d.yaml': {
+                'sensors': ['harvesting_pointcloud'],
+                'harvesting_pointcloud': {'sensor_plugin': 'occupancy_map_monitor/PointCloudOctomapUpdater'}},
             'config/kinematics.yaml': {'ur_manipulator': {'kinematics_solver': 'ur_kinematics/URKinematicsPlugin'}},
             'config/ompl_planning.yaml': {'planner_configs': {}},
             'config/controllers.yaml': {'joint_trajectory_controller': {'type': 'FollowJointTrajectory'}},
@@ -49,7 +53,8 @@ class PlannerModelTests(unittest.TestCase):
     def test_same_model_and_solver_for_planner_and_move_group(self):
         for enabled in (False, True):
             context = dict(robot_controller='scaled_joint_trajectory_controller',
-                           launch_planning_server='true', allow_execution=str(enabled).lower())
+                           launch_planning_server='true', allow_execution=str(enabled).lower(),
+                           pointcloud_avoidance='false')
             nodes = self.launch.launch_setup(context)
             planner = next(node for node in nodes if node.package == 'moveit_path_planner')
             group = next(node for node in nodes if node.package == 'moveit_ros_move_group')
@@ -68,6 +73,38 @@ class PlannerModelTests(unittest.TestCase):
                      if hasattr(item, 'default_value')}
         self.assertEqual(arguments['launch_planning_server'], 'false')
         self.assertEqual(arguments['allow_execution'], 'false')
+
+    def test_mapping_config_is_loaded_into_actual_move_group(self):
+        context = dict(self.launch.PERCEPTION_DEFAULTS, robot_controller='scaled_joint_trajectory_controller',
+                       launch_planning_server='true', allow_execution='false', pointcloud_avoidance='true')
+        nodes = self.launch.launch_setup(context)
+        group = next(node for node in nodes if node.package == 'moveit_ros_move_group')
+        planner = next(node for node in nodes if node.package == 'moveit_path_planner')
+        mapping = next(params for params in group.parameters if 'sensors' in params)
+        self.assertEqual(mapping['harvesting_pointcloud']['point_cloud_topic'], '/harvesting/scene_points')
+        self.assertFalse(mapping['allow_trajectory_execution'])
+        self.assertEqual(mapping['octomap_frame'], 'base_link')
+        self.assertTrue(planner.parameters[-1]['pointcloud_avoidance'])
+        self.assertFalse(planner.parameters[-1]['allow_execution'])
+        context['allow_execution'] = 'true'
+        with self.assertRaisesRegex(ValueError, 'plan-only'):
+            self.launch.launch_setup(context)
+
+    def test_mapping_overrides_reach_scene_and_guard_and_share_validation(self):
+        context = dict(self.launch.PERCEPTION_DEFAULTS, robot_controller='scaled_joint_trajectory_controller',
+                       launch_planning_server='true', allow_execution='false', pointcloud_avoidance='true',
+                       scene_cloud_topic='/trial/scene', max_update_rate='7.5', octomap_resolution='0.02')
+        nodes = self.launch.launch_setup(context)
+        group = next(node for node in nodes if node.package == 'moveit_ros_move_group')
+        planner = next(node for node in nodes if node.package == 'moveit_path_planner')
+        mapping = next(params for params in group.parameters if 'sensors' in params)
+        self.assertEqual(mapping['harvesting_pointcloud']['point_cloud_topic'], '/trial/scene')
+        self.assertEqual(mapping['harvesting_pointcloud']['max_update_rate'], 7.5)
+        self.assertEqual(mapping['octomap_resolution'], 0.02)
+        self.assertEqual(planner.parameters[-1]['octomap_resolution'], 0.02)
+        context['max_update_rate'] = '31'
+        with self.assertRaisesRegex(ValueError, '30 Hz'):
+            self.launch.launch_setup(context)
 
 if __name__ == '__main__':
     unittest.main()

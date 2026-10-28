@@ -24,6 +24,9 @@ from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from harvesting_config import deployment
+
+PERCEPTION_DEFAULTS = deployment.perception_launch_defaults()
 
 
 def load_yaml(package_name, file_path):
@@ -149,6 +152,11 @@ def generate_launch_description():
             description="Allow the project planning service to execute requested trajectories.",
         )
     )
+    declared_arguments.append(DeclareLaunchArgument(
+        'pointcloud_avoidance', default_value='false', choices=['true', 'false'],
+        description='Enable point-cloud mapping and guarded plan-only requests.'))
+    for name, default in PERCEPTION_DEFAULTS.items():
+        declared_arguments.append(DeclareLaunchArgument(name, default_value=default))
     return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])
 
 
@@ -326,6 +334,16 @@ def launch_setup(context):
         },
     }
 
+    avoidance_enabled = LaunchConfiguration('pointcloud_avoidance').perform(context) == 'true'
+    guard_parameters = {'pointcloud_avoidance': avoidance_enabled}
+    perception_configuration = {}
+    if avoidance_enabled:
+        arguments = {key: LaunchConfiguration(key).perform(context) for key in PERCEPTION_DEFAULTS}
+        perception_configuration, mapping_guard = deployment.moveit_mapping_parameters(
+            arguments, load_yaml('end_effector_description', 'config/sensors_3d.yaml'),
+            allow_execution=LaunchConfiguration('allow_execution').perform(context))
+        guard_parameters.update(mapping_guard)
+
     # Start the actual move_group node/action server
     move_group_node = Node(
         package="moveit_ros_move_group",
@@ -339,6 +357,7 @@ def launch_setup(context):
             trajectory_execution,
             moveit_controllers,
             planning_scene_monitor_parameters,
+            perception_configuration,
         ],
     )
 
@@ -353,13 +372,14 @@ def launch_setup(context):
             robot_description,
             robot_description_semantic,
             robot_description_kinematics,
-            {"allow_execution": LaunchConfiguration("allow_execution").perform(context) == "true"},
+            dict(guard_parameters, allow_execution=LaunchConfiguration("allow_execution").perform(context) == "true"),
         ],
     )
 
     # rviz with moveit configuration
     rviz_config_file = PathJoinSubstitution(
-        [FindPackageShare(moveit_config_package), "rviz", "view_robot.rviz"]
+        [FindPackageShare('end_effector_description' if avoidance_enabled else moveit_config_package),
+         'rviz', 'pointcloud_scene.rviz' if avoidance_enabled else 'view_robot.rviz']
     )
     rviz_node = Node(
         package="rviz2",

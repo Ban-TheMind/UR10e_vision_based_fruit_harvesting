@@ -2,6 +2,10 @@
 
 本手册面向实验操作者。对外说明保留在根目录 `README.md`；历史 README 中的 Humble、原夹爪和启动方式不代表当前现场部署。当前维护版本是用户 fork 的 `main`，运行目标为 Ubuntu 20.04 / ROS2 Foxy；其他电脑负责编辑、同步和离线检查。
 
+2026-10-26 新增独立点云建图与只规划模式：`bash scripts/project mapping`、`bash scripts/project mapping-check`。
+该模式禁用轨迹执行，不启动 YOLO 或夹爪；旧 all/demo 流程不自动切换到点云地图。
+代码与离线验证不代表现场验收，实施步骤和已知边界见[点云建图验收说明](pointcloud_mapping.md)。
+
 ## 2026-10-12 现场成功：单苹果抓取与投放
 
 操作者确认完整物理链路已经跑通：Home 扫描、一次视觉检测、上方接近、到示教高度、
@@ -97,6 +101,8 @@ bash scripts/project above-check --execute \
 旧入口 `ros2 launch end_effector_description display.launch.py` 现在转入统一启动，默认 `fake`；需要真实设备时显式传入 `mode:=robot` 或 `mode:=all`。历史 `auxiliary.launch.py` 和 horizontal/tmp 演示保留用于追溯，不属于当前受测主入口。
 
 ## 配置与环境
+
+联合部署与诊断现已使用同一个独立配置包，按当前模式检查所需条件；例如 camera 不要求夹爪配置，mapping 不要求 YOLO 解释器或桌面抓取参数。Home 保留上述固定配置与监督约定。职责及校验规则见 [联合部署配置](deployment_config.md)。本次新增 `harvesting_config` 包，首次更新后先完整运行 `bash scripts/project build`，再重启旧节点。
 
 联合启动配置在 `src/harvesting_bringup/config/site.json`，采用 JSON，离线解析不依赖 PyYAML。记录机器人 IP/headless、相机序列号和推理 Python、串口参数及流程参数。现场配置的扫描姿态采用已实测 Home，投放姿态采用操作者 2026-10-10 示教的关节位置。当前桌面策略采用 FK 示教高度与方向、显式工具变换及独立试验配置；2026-10-12 已完成固定补偿下的抓取投放。相机外参仍需重新标定，默认 `calibration_verified=false`。
 

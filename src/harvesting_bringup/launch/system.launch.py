@@ -1,5 +1,4 @@
 """Compose individual field stages without starting a routine by default."""
-import importlib.util
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -8,19 +7,19 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-spec = importlib.util.spec_from_file_location('harvesting_deployment', os.path.join(os.path.dirname(__file__), 'deployment.py'))
-deployment = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(deployment)
+from harvesting_config import deployment
 
 def include(package, filename, arguments):
     path = os.path.join(get_package_share_directory(package), 'launch', filename)
     return IncludeLaunchDescription(PythonLaunchDescriptionSource(path), launch_arguments=arguments.items())
 
 def compose(context):
-    profile = deployment.load_profile(LaunchConfiguration('profile').perform(context))
-    mode = LaunchConfiguration('mode').perform(context)
-    plan = deployment.build_plan(profile, mode, LaunchConfiguration('motion_enabled').perform(context))
-    rviz = deployment.boolean(LaunchConfiguration('rviz').perform(context))
+    resolved = deployment.resolve_deployment(
+        LaunchConfiguration('profile').perform(context),
+        LaunchConfiguration('mode').perform(context),
+        {name: LaunchConfiguration(name).perform(context) for name in deployment.OVERRIDE_NAMES})
+    profile, plan = resolved.profile, resolved.plan
+    rviz, perception = resolved.rviz, resolved.perception
     actions = []
     if plan['robot']:
         common = {key: str(value).lower() if isinstance(value, bool) else str(value)
@@ -31,6 +30,10 @@ def compose(context):
         moveit = dict(common, launch_rviz=str(rviz).lower(),
                       launch_planning_server='true',
                       allow_execution=str(plan['allow_execution']).lower())
+        moveit['pointcloud_avoidance'] = str(plan['mapping']).lower()
+        if plan['mapping']:
+            moveit.update({key: str(value) for key, value in perception.items()
+                           if key != 'camera_root_frame'})
         actions.append(TimerAction(period=4.0, actions=[
             include('end_effector_description', 'foxy_moveit.launch.py', moveit)]))
     if plan['camera']:
@@ -39,18 +42,27 @@ def compose(context):
             'serial_no': '_' + str(camera['serial_no']), 'enable_sync': 'true',
             'align_depth.enable': 'true', 'enable_color': 'true', 'enable_depth': 'true',
             'rgb_camera.profile': camera['profile'], 'depth_module.profile': camera['profile'],
-            'pointcloud.enable': 'false'}))
-        actions.append(Node(package='camera', executable='camera_node', output='screen', parameters=[{
-            'inference_python': camera['inference_python'], 'calibration_file': camera['calibration_file'],
-            'enable_cv_window': False}]))
+            'pointcloud.enable': str(plan['mapping']).lower()}))
+        if plan['mapping']:
+            actions.append(Node(package='camera', executable='calibration_tf_node', output='screen', parameters=[{
+                'calibration_file': camera['calibration_file'],
+                'camera_root_frame': perception['camera_root_frame'],
+                'calibration_verified': profile['task']['calibration_verified']}]))
+            actions.append(Node(package='camera', executable='pointcloud_filter_node', output='screen', parameters=[{
+                'input_topic': perception['point_cloud_topic'],
+                'output_topic': perception['scene_cloud_topic'],
+                'max_update_rate': perception['max_update_rate']}]))
+        else:
+            actions.append(Node(package='camera', executable='camera_node', output='screen', parameters=[{
+                'inference_python': camera['inference_python'], 'calibration_file': camera['calibration_file'],
+                'enable_cv_window': False}]))
     if plan['gripper']:
         parameters = dict(profile['gripper'], allow_gripper_commands=plan['allow_gripper_commands'])
         actions.append(Node(package='gripper', executable='gripper_server', output='screen', parameters=[parameters]))
     if plan['routine']:
         parameters = dict(profile['task'], motion_enabled=True,
-                          execution_timeout=deployment.execution_timeout(
-                              profile, LaunchConfiguration('execution_timeout').perform(context)))
-        parameters.update(deployment.tabletop_parameters(profile, required=True))
+                          execution_timeout=resolved.execution_timeout)
+        parameters.update(resolved.tabletop)
         actions.append(Node(package='demo_package', executable='vertical_fruit_gripping_demo',
                             output='screen', parameters=[parameters]))
     return actions

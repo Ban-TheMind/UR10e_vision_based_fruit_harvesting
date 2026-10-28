@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """One compensated above-target trial against an existing project all launch."""
 import argparse
-import importlib.util
 import json
 import math
 import os
@@ -29,11 +28,8 @@ def main():
     parser.add_argument('--xy-offset', nargs=2, type=float, default=[0.0, 0.0], help='Residual gripper-center XY correction, meters')
     parser.add_argument('--profile', default=os.environ.get('HARVEST_PROFILE', str(ROOT / 'src/harvesting_bringup/config/site.json')))
     args = parser.parse_args()
-    spec = importlib.util.spec_from_file_location('deployment', ROOT / 'src/harvesting_bringup/launch/deployment.py')
-    deployment = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(deployment)
-    profile = deployment.load_profile(args.profile)
-    geometry = deployment.tabletop_parameters(profile)
+    from harvesting_config import deployment
+    profile, geometry = deployment.above_check_settings(args.profile, execute=args.execute)
     offset = geometry.get('tool_offset_m', [0.0, 0.0, 0.1628])
     clearance = geometry.get('clearance_m', 0.12)
     from types import SimpleNamespace

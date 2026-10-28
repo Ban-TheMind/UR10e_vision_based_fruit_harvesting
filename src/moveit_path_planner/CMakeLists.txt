@@ -4,6 +4,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(octomap REQUIRED)
+find_package(octomap_msgs REQUIRED)
+find_package(Threads REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -23,6 +27,8 @@ ament_target_dependencies(moveit_path_planning_server
   moveit_ros_planning_interface
   geometry_msgs
   sensor_msgs
+  std_srvs
+  octomap_msgs
   shape_msgs
   moveit_msgs
   tf2
@@ -30,6 +36,9 @@ ament_target_dependencies(moveit_path_planning_server
   tf2_geometry_msgs
   custom_interface
 )
+
+target_include_directories(moveit_path_planning_server PRIVATE ${OCTOMAP_INCLUDE_DIRS})
+target_link_libraries(moveit_path_planning_server ${OCTOMAP_LIBRARIES} Threads::Threads)
 
 install(TARGETS moveit_path_planning_server
   DESTINATION lib/${PROJECT_NAME}

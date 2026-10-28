@@ -20,7 +20,8 @@ fi
 
 missing=0
 for package in ur_description ur_robot_driver ur_controllers ur_moveit_config \
-               realsense2_camera moveit_ros_move_group controller_manager xacro; do
+               realsense2_camera moveit_ros_move_group moveit_ros_perception \
+               octomap_msgs std_srvs controller_manager xacro; do
   if ros2 pkg prefix "$package" >/dev/null 2>&1; then
     echo "FOUND: $package"
   else
@@ -42,7 +43,7 @@ if not launch_file.is_file():
     raise SystemExit('FAIL: RealSense rs_launch.py is missing')
 source = launch_file.read_text()
 required = ('serial_no', 'rgb_camera.profile', 'depth_module.profile',
-            'align_depth.enable', 'enable_sync')
+            'align_depth.enable', 'enable_sync', 'pointcloud.enable')
 missing = [name for name in required if name not in source]
 if missing:
     raise SystemExit('FAIL: RealSense wrapper launch arguments differ: ' + ', '.join(missing))

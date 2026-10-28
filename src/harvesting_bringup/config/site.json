@@ -50,5 +50,20 @@
       0.0,
       0.1628
     ]
+  },
+  "perception": {
+    "point_cloud_topic": "/camera/depth/color/points",
+    "scene_cloud_topic": "/harvesting/scene_points",
+    "filtered_cloud_topic": "/harvesting/filtered_points",
+    "camera_root_frame": "camera_link",
+    "octomap_frame": "base_link",
+    "octomap_resolution": 0.01,
+    "max_range": 2.0,
+    "max_update_rate": 2.0,
+    "point_subsample": 1,
+    "padding_offset": 0.01,
+    "padding_scale": 1.0,
+    "pointcloud_max_age": 3.0,
+    "scene_service_timeout": 2.0
   }
 }

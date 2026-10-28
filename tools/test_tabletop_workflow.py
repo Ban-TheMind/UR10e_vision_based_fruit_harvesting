@@ -9,6 +9,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src/harvesting_config'))
+from harvesting_config import deployment
 sys.path.insert(0, str(ROOT / 'src/demo_package'))
 from demo_package.tabletop_geometry import tabletop_poses, gripper_center_to_tool0, rpy_rotation, rotate_offset
 
@@ -60,15 +62,14 @@ class TabletopTests(unittest.TestCase):
             gripper_center_to_tool0([0, 0, 0], [0, 0, 0], [0, 0, math.nan])
 
     def test_missing_field_geometry_blocks_only_harvesting(self):
-        deployment = load('tabletop_deployment', ROOT / 'src/harvesting_bringup/launch/deployment.py')
         profile = deployment.load_profile(ROOT / 'src/harvesting_bringup/config/site.json')
         self.assertIsNone(profile['tabletop']['grasp_height_m'])
         for mode in ('fake', 'robot', 'camera', 'gripper', 'all'):
-            deployment.build_plan(profile, mode, False)
+            deployment.resolve_deployment(profile, mode)
         with self.assertRaisesRegex(ValueError, '桌面抓取参数尚未填写'):
-            deployment.build_plan(profile, 'demo', True)
+            deployment.resolve_deployment(profile, 'demo', {'motion_enabled': True}).plan
         profile['tabletop'].update(grasp_height_m=-0.1, tool_rpy_rad=[0, math.pi, 0], xy_offset_m=[0, 0])
-        self.assertTrue(deployment.build_plan(profile, 'demo', True)['routine'])
+        self.assertTrue(deployment.resolve_deployment(profile, 'demo', {'motion_enabled': True}).plan['routine'])
         for name, invalid in (('tool_rpy_rad', [0, 1]), ('xy_offset_m', [0, math.nan]),
                               ('grasp_height_m', math.inf), ('clearance_m', 0), ('tool_offset_m', [0, 0])):
             previous = profile['tabletop'][name]

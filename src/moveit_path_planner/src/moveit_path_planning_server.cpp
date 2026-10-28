@@ -2,12 +2,13 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <std_srvs/srv/trigger.hpp>
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/pose.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
-#include "moveit/planning_scene_interface/planning_scene_interface.h"
+#include "pointcloud_scene_guard.hpp"
 #include "moveit_msgs/msg/constraints.hpp"
 #include "moveit_msgs/msg/joint_constraint.hpp"
 #include "moveit_msgs/msg/orientation_constraint.hpp"
@@ -55,13 +56,6 @@ public:
     declare_default_parameter(node_, "goal_position_tolerance", 0.001);
     declare_default_parameter(node_, "goal_orientation_tolerance", 0.001);
 
-    // The example scene contains dimensions from the original author's workcell.
-    // It must be explicitly enabled only after the actual cell is measured.
-    declare_default_parameter(node_, "load_example_collision_objects", false);
-    if (node_->get_parameter("load_example_collision_objects").as_bool()) {
-      setupCollisionObjects();
-    }
-
     // A service request must not move real hardware during commissioning by default.
     declare_default_parameter(node_, "allow_execution", false);
 
@@ -73,6 +67,17 @@ public:
     // move_group_->setPlannerId("RRTConnect");
     // move_group_->setPlannerId("BKPIECEkConfigDefault");
     move_group_->setPlannerId("TRRTkConfigDefault");
+
+    scene_guard_ = std::make_unique<PointCloudSceneGuard>(node_);
+
+    readiness_service_ = node_->create_service<std_srvs::srv::Trigger>(
+      "/pointcloud_scene_ready",
+      [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+             std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        response->success = scene_guard_->enabled() && scene_guard_->ready();
+        response->message = !scene_guard_->enabled() ? "Point-cloud avoidance disabled; start mapping mode" :
+                            (response->success ? "Point-cloud scene ready (plan-only)" : scene_guard_->reason());
+      });
 
     service_ = node_->create_service<custom_interface::srv::MovementRequest>(
       "/moveit_path_plan",
@@ -204,7 +209,7 @@ public:
     }
 
     const bool execute_request = movement_request_policy::is_execution(command);
-    if (execute_request && !node_->get_parameter("allow_execution").as_bool()) {
+    if (execute_request && (scene_guard_->enabled() || !node_->get_parameter("allow_execution").as_bool())) {
         RCLCPP_ERROR(node_->get_logger(), "Execution disabled; use plan_cartesian or plan_joint for a dry run");
         response->success = false;
         return;
@@ -236,38 +241,6 @@ public:
     // Common planning and execution logic
     response->success = plan_and_maybe_execute(execute_request);
 }
-
-  void setupCollisionObjects() {
-    std::string frame_id = "world";
-    moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-
-    planning_scene_interface.applyCollisionObject(generateCollisionObject(2.4, 0.04, 3.0, 0.70, -0.60, 0.5, frame_id, "backWall"));
-    planning_scene_interface.applyCollisionObject(generateCollisionObject(0.04, 2.4, 3.0, -0.55, 0.25, 0.8, frame_id, "sideWall"));
-    planning_scene_interface.applyCollisionObject(generateCollisionObject(3, 3, 0.01, 0.85, 0.25, 0.05, frame_id, "table"));
-    planning_scene_interface.applyCollisionObject(generateCollisionObject(2.4, 2.4, 0.04, 0.85, 0.25, 1.5, frame_id, "ceiling"));
-  }
-
-  auto generateCollisionObject(float sx, float sy, float sz, float x, float y, float z, const std::string& frame_id, const std::string& id) -> moveit_msgs::msg::CollisionObject {
-    moveit_msgs::msg::CollisionObject collision_object;
-    collision_object.header.frame_id = frame_id;
-    collision_object.id = id;
-
-    shape_msgs::msg::SolidPrimitive primitive;
-    primitive.type = primitive.BOX;
-    primitive.dimensions = {sx, sy, sz};
-
-    geometry_msgs::msg::Pose box_pose;
-    box_pose.orientation.w = 1.0;
-    box_pose.position.x = x;
-    box_pose.position.y = y;
-    box_pose.position.z = z;
-
-    collision_object.primitives.push_back(primitive);
-    collision_object.primitive_poses.push_back(box_pose);
-    collision_object.operation = collision_object.ADD;
-
-    return collision_object;
-  }
 
   bool str_contains(const std::string& str, const std::string& substr) {
     if (substr.empty()) return false;
@@ -317,12 +290,14 @@ private:
   }
 
   bool plan_and_maybe_execute(bool execute_request) {
+    if (!scene_guard_->ready()) return false;
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     if (!move_group_->plan(plan)) {
         RCLCPP_ERROR(node_->get_logger(), "Planning failed; no trajectory was executed");
         return false;
     }
 
+    if (!scene_guard_->ready()) return false;
     if (!execute_request) {
         RCLCPP_INFO(node_->get_logger(), "Plan succeeded; execution was not requested");
         return true;
@@ -340,6 +315,8 @@ private:
   rclcpp::Node::SharedPtr node_;
   std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
   rclcpp::Service<custom_interface::srv::MovementRequest>::SharedPtr service_;
+  std::unique_ptr<PointCloudSceneGuard> scene_guard_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr readiness_service_;
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   sensor_msgs::msg::JointState::SharedPtr latest_joint_state_;

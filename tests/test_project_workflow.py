@@ -12,6 +12,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src/harvesting_config'))
+from harvesting_config import deployment
 LAUNCH = ROOT / 'src/harvesting_bringup/launch'
 
 def load(name, path):
@@ -20,7 +22,6 @@ def load(name, path):
     spec.loader.exec_module(module)
     return module
 
-deployment = load('deployment_test', LAUNCH / 'deployment.py')
 PROFILE = deployment.load_profile(ROOT / 'src/harvesting_bringup/config/site.json')
 # Synthetic test geometry, never written to the field profile.
 PROFILE['tabletop'] = dict(grasp_height_m=0.25, tool_rpy_rad=[0.0, 3.14, 0.0],
@@ -53,9 +54,9 @@ class WorkflowTests(unittest.TestCase):
             launch = load('system_launch_test', LAUNCH / 'system.launch.py')
             for mode, expected in [('fake', set()), ('robot', set()),
                                    ('camera', {'camera'}), ('gripper', {'gripper'}),
-                                   ('all', {'camera', 'gripper'})]:
+                                   ('all', {'camera', 'gripper'}), ('mapping', {'camera'})]:
                 context = {'profile': str(ROOT / 'src/harvesting_bringup/config/site.json'),
-                           'mode': mode, 'motion_enabled': 'false', 'rviz': 'false'}
+                           'mode': mode, 'motion_enabled': 'false', 'rviz': 'false', 'execution_timeout': ''}
                 actions = launch.compose(context)
                 flattened = [child for action in actions for child in
                              (action.actions if hasattr(action, 'actions') else [action])]
@@ -65,12 +66,18 @@ class WorkflowTests(unittest.TestCase):
                     params = node.parameters[0]
                     self.assertFalse(params.get('allow_execution', False))
                     self.assertFalse(params.get('allow_gripper_commands', False))
-                if mode in ('fake', 'robot', 'all'):
+                if mode in ('fake', 'robot', 'all', 'mapping'):
                     includes = [a for a in flattened if hasattr(a, 'launch_arguments')]
                     moveit = next(a for a in includes if a.args[0].args[0].endswith('foxy_moveit.launch.py'))
                     args = dict(moveit.launch_arguments)
                     self.assertEqual(args['launch_planning_server'], 'true')
                     self.assertEqual(args['allow_execution'], 'false')
+                    self.assertEqual(args['pointcloud_avoidance'], str(mode == 'mapping').lower())
+                if mode == 'mapping':
+                    self.assertEqual({node.executable for node in nodes}, {'calibration_tf_node', 'pointcloud_filter_node'})
+                    camera_launch = next(a for a in flattened if hasattr(a, 'launch_arguments')
+                                        and a.args[0].args[0].endswith('rs_launch.py'))
+                    self.assertEqual(dict(camera_launch.launch_arguments)['pointcloud.enable'], 'true')
                 if mode == 'fake':
                     includes = [a for a in flattened if hasattr(a, 'launch_arguments')]
                     self.assertEqual(len(includes), 2)
@@ -85,20 +92,20 @@ class WorkflowTests(unittest.TestCase):
 
     def test_enablement_and_calibration(self):
         for mode, enabled in [('demo', False), ('fake', True)]:
-            with self.assertRaises(ValueError): deployment.build_plan(PROFILE, mode, enabled)
+            with self.assertRaises(ValueError): deployment.resolve_deployment(PROFILE, mode, {'motion_enabled': enabled})
         self.assertFalse(PROFILE['task']['calibration_verified'])
-        plan = deployment.build_plan(PROFILE, 'demo', True)
+        plan = deployment.resolve_deployment(PROFILE, 'demo', {'motion_enabled': True}).plan
         self.assertTrue(plan['routine'])
         self.assertTrue(plan['allow_execution'])
         self.assertTrue(plan['allow_gripper_commands'])
         profile = copy.deepcopy(PROFILE)
         profile['task']['calibration_verified'] = True
-        self.assertTrue(deployment.build_plan(profile, 'demo', True)['routine'])
+        self.assertTrue(deployment.resolve_deployment(profile, 'demo', {'motion_enabled': True}).plan['routine'])
         for actual, degrees in zip(profile['task']['birds_eye_joint_pos'], [-180, -90, 127, -123, 270, 0]):
             self.assertAlmostEqual(actual, math.radians(degrees))
         for actual, degrees in zip(profile['task']['drop_joint_pos'], [-148.38, -87.44, 132.69, -131.78, 269.45, -0.33]):
             self.assertAlmostEqual(actual, math.radians(degrees))
-        with self.assertRaises(ValueError): deployment.build_plan(profile, 'typo')
+        with self.assertRaises(ValueError): deployment.resolve_deployment(profile, 'typo')
         with self.assertRaises(ValueError): deployment.boolean('yes')
 
     def test_routine_init_requires_enablement_but_not_calibration_flag(self):
@@ -152,7 +159,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(destroyed, [True])
 
     def test_wrapper_rejects_before_ros(self):
-        for args in (['demo'], ['all', 'motion_enabled:=yes'], ['fake', 'robot_ip:=1.2.3.4'], ['nonsense'], ['demo', 'motion_enabled:=true', 'execution_timeout:=nan'],
+        for args in (['demo'], ['mapping', 'motion_enabled:=true'], ['all', 'motion_enabled:=yes'], ['fake', 'robot_ip:=1.2.3.4'], ['nonsense'], ['demo', 'motion_enabled:=true', 'execution_timeout:=nan'],
                      ['demo', 'motion_enabled:=true', 'execution_timeout:=0']):
             result = subprocess.run(['bash', 'scripts/project'] + args, cwd=ROOT, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)

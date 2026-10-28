@@ -1,0 +1,80 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Fixed Frame: base_link
+    Background Color: 48; 48; 48
+    Frame Rate: 15
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 0.1
+      Plane Cell Count: 20
+      Color: 120; 120; 120
+    - Class: moveit_rviz_plugin/MotionPlanning
+      Name: Planning scene and OctoMap
+      Enabled: true
+      Robot Description: robot_description
+      Planning Scene Topic: /monitored_planning_scene
+      Planning Request:
+        Planning Group: ur_manipulator
+        Query Goal State: false
+        Query Start State: false
+      Scene Geometry:
+        Show Scene Geometry: true
+        Scene Alpha: 0.8
+        Scene Color: 100; 180; 140
+        Voxel Rendering: Occupied Voxels
+        Voxel Coloring: Z-Axis
+      Scene Robot:
+        Robot Alpha: 0.7
+        Show Robot Visual: true
+        Show Robot Collision: false
+      Planned Path:
+        Trajectory Topic: /display_planned_path
+        State Display Time: 0.1 s
+        Robot Alpha: 0.8
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Raw camera cloud
+      Enabled: false
+      Topic:
+        Value: /camera/depth/color/points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Position Transformer: XYZ
+      Color Transformer: RGB8
+      Style: Points
+      Size (Pixels): 2
+      Alpha: 0.7
+    - Class: rviz_default_plugins/PointCloud2
+      Name: MoveIt processed cloud
+      Enabled: false
+      Topic:
+        Value: /harvesting/filtered_points
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Position Transformer: XYZ
+      Color Transformer: FlatColor
+      Color: 120; 180; 220
+      Style: Points
+      Size (Pixels): 2
+      Alpha: 0.7
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 2
+      Pitch: 0.5
+      Yaw: 0.7
+      Target Frame: base_link
+Window Geometry:
+  Width: 1100
+  Height: 750

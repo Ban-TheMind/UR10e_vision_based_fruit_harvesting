@@ -9,6 +9,7 @@ README.md                    对外项目概述，保留原文
 scripts/project              日常统一命令入口
 scripts/ros_env.sh           Foxy 环境及构建 overlay 的唯一加载逻辑
 scripts/check_profile.py     无 ROS 的部署参数检查
+src/harvesting_config/        共享配置、模式所需条件和参数解析（无 ROS 依赖）
 src/harvesting_bringup/       模式编排和现场配置
 src/camera/                  固定相机、坐标转换、独立 YOLO 通信
 src/moveit_path_planner/      规划／执行请求与策略
@@ -44,6 +45,8 @@ build-project/install-project/log-project/ 本地构建产物，不提交
 联合启动中 MoveIt 的 4 秒延时仅是启动顺序安排，不是“硬件已准备”的证明。采摘节点另有服务等待超时；真实动作仍依赖控制层的运行条件。假机械臂模式不包含虚拟视觉/夹爪，不能在此模式直接验收整套采摘。
 
 ## 自动回归实际检查什么
+
+`tests/test_deployment_config.py` 通过共享配置入口、真实预检查命令及替换 ROS 对象的实际启动函数，验证局部 profile、模式所需条件、临时覆盖优先级、点云规则一致性和未构建时的离线导入；另在临时安装目录导入配置包。Foxy 的真实安装与启动仍需现场构建验收，见 [联合部署配置](deployment_config.md)。
 
 `tests/test_project_workflow.py` 替换 ROS 传输和 launch 对象，执行实际编排函数：确认各模式启动的子系统、真实/假控制器选择和默认禁止执行；拒绝未知参数、未显式启用运动和错误布尔值；检查未核验标定只提示、不改变状态记录；执行真实流程代码，确认夹紧后搬运到投放点再松开，夹爪失败后不继续，单个离群检测点也被过滤。它不启动 ROS，不证明现场 launch API 或设备兼容性。
 

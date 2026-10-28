@@ -31,6 +31,8 @@ setup(
             'camera_server = camera.camera_node:main',
             'camera_client = camera.camera_client:main',
             'camera_node = camera.camera_node:main',
+            'calibration_tf_node = camera.calibration_tf_node:main',
+            'pointcloud_filter_node = camera.pointcloud_filter_node:main',
         ],
     },
 )

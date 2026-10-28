@@ -103,10 +103,12 @@ def main():
     check_source_files()
     check_console_scripts()
     check_configuration()
+    run("shared deployment configuration and mode prerequisites", [sys.executable, "tests/test_deployment_config.py"])
     run("staged launch and routine behavior", [sys.executable, "tests/test_project_workflow.py"])
     run("single-entry Home safety gates", [sys.executable, "tools/test_ur10e_control.py"])
     run("Foxy hardcoded headless compatibility", [sys.executable, "tools/test_foxy_control_config.py"])
     run("planner model sharing", [sys.executable, "tools/test_planner_model_config.py"])
+    run("point-cloud mapping geometry and stage isolation", [sys.executable, "tools/test_pointcloud_mapping.py"])
     run("harvesting execution timeout", [sys.executable, "tools/test_harvest_timeout.py"])
     run("single-apple tabletop workflow", [sys.executable, "tools/test_tabletop_workflow.py"])
     check_model(args.require_model)
@@ -126,6 +128,11 @@ def main():
                 "src/moveit_path_planner/test/test_movement_request_policy.cpp",
                 "-o", binary])
             run("movement request policy", [binary])
+            run("compile point-cloud readiness policy", [
+                compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                "-Isrc/moveit_path_planner/src",
+                "src/moveit_path_planner/test/test_pointcloud_readiness.cpp", "-o", binary])
+            run("point-cloud readiness policy", [binary])
     else:
         print("NOTE g++ unavailable; C++ policy check skipped")
     print("PASS offline preflight; no hardware was contacted")

@@ -8,6 +8,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src/harvesting_config'))
+from harvesting_config import deployment
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -99,7 +101,6 @@ class HarvestTimeoutTests(unittest.TestCase):
             self.assertEqual(waits, [660.0, 660.0, 120.0])
 
     def test_finite_positive_profile_and_override(self):
-        deployment = load('timeout_deployment', ROOT / 'src/harvesting_bringup/launch/deployment.py')
         self.assertEqual(deployment.execution_timeout({'task': {}}), 600.0)
         self.assertEqual(deployment.execution_timeout({'task': {'execution_timeout': 300.0}}), 300.0)
         self.assertEqual(deployment.execution_timeout({'task': {'execution_timeout': 300.0}}, '90'), 90.0)
@@ -122,16 +123,16 @@ class HarvestTimeoutTests(unittest.TestCase):
         modules['launch_ros.actions'].Node = Action
         with patch.dict(sys.modules, modules):
             launch = load('timeout_launch', LAUNCH / 'system.launch.py')
-            launch.deployment.load_profile = lambda _: PROFILE
-            for override, expected in (('', 600.0), ('90', 90.0)):
-                actions = launch.compose(dict(profile=str(ROOT / 'src/harvesting_bringup/config/site.json'),
-                                              mode='demo', motion_enabled='true', rviz='false',
-                                              execution_timeout=override))
-                node = next(action for action in actions if getattr(action, 'package', '') == 'demo_package')
-                self.assertEqual(node.parameters[0]['execution_timeout'], expected)
-                self.assertEqual(node.parameters[0]['grasp_strategy'], 'tabletop')
-                for name, value in PROFILE['tabletop'].items():
-                    self.assertEqual(node.parameters[0][name], value)
+            with patch.object(launch.deployment, 'load_profile', return_value=PROFILE):
+                for override, expected in (('', 600.0), ('90', 90.0)):
+                    actions = launch.compose(dict(profile=str(ROOT / 'src/harvesting_bringup/config/site.json'),
+                                                  mode='demo', motion_enabled='true', rviz='false',
+                                                  execution_timeout=override))
+                    node = next(action for action in actions if getattr(action, 'package', '') == 'demo_package')
+                    self.assertEqual(node.parameters[0]['execution_timeout'], expected)
+                    self.assertEqual(node.parameters[0]['grasp_strategy'], 'tabletop')
+                    for name, value in PROFILE['tabletop'].items():
+                        self.assertEqual(node.parameters[0][name], value)
 
 if __name__ == '__main__':
     unittest.main()

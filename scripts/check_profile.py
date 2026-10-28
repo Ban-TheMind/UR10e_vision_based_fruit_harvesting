@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
-"""Validate launch inputs before loading ROS or contacting devices."""
-import importlib.util
+"""Validate deployment inputs with plain Python before loading ROS."""
 from pathlib import Path
 import sys
-root = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('deployment', root / 'src/harvesting_bringup/launch/deployment.py')
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
+
+# This pre-build command deliberately imports the source package, without ROS.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src/harvesting_config'))
+from harvesting_config import deployment
+
 if __name__ == '__main__':
     try:
-        profile = module.load_profile(sys.argv[1])
-        overrides = dict(arg.split(':=', 1) for arg in sys.argv[3:])
-        if set(overrides) - {'motion_enabled', 'rviz', 'execution_timeout'}:
-            raise ValueError('Supported overrides: motion_enabled:=true/false rviz:=true/false execution_timeout:=SECONDS')
-        module.boolean(overrides.get('rviz', 'true'))
-        module.execution_timeout(profile, overrides.get('execution_timeout', ''))
-        plan = module.build_plan(profile, sys.argv[2], overrides.get('motion_enabled', 'false'))
-        print('Profile valid; mode=' + sys.argv[2] + '; execution=' + str(plan['allow_execution']))
+        resolved = deployment.resolve_deployment(
+            sys.argv[1], sys.argv[2], deployment.parse_overrides(sys.argv[3:]))
+        print('Profile valid; mode=' + sys.argv[2] + '; execution=' + str(resolved.plan['allow_execution']))
     except (ValueError, KeyError, OSError, TypeError, IndexError) as error:
         sys.exit('Profile error: ' + str(error))

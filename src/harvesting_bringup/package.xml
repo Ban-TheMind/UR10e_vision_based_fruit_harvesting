@@ -10,5 +10,7 @@
   <exec_depend>end_effector_description</exec_depend><exec_depend>camera</exec_depend>
   <exec_depend>gripper</exec_depend><exec_depend>moveit_path_planner</exec_depend>
   <exec_depend>demo_package</exec_depend><exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>harvesting_config</exec_depend>
+
   <export><build_type>ament_cmake</build_type></export>
 </package>
